@@ -56,7 +56,7 @@ class VCruiseHelper:
     self.button_cnt = 0
     self.long_pressed = False
     self.button_prev = ButtonType.unknown
-    self.cruiseActivate = False
+    self.cruiseActivate = 0
     self.params = Params()
     self.v_cruise_kph_set = V_CRUISE_UNSET
     self.cruiseSpeedTarget = 0
@@ -252,37 +252,51 @@ class VCruiseHelper:
           else:
             v_cruise_kph = self.v_cruise_speed_up(v_cruise_kph)
         elif button_type == ButtonType.decelCruise:
-          if v_cruise_kph <= self.v_ego_kph_set:
-            v_cruise_kph = button_kph
-          elif v_cruise_kph > self.v_ego_kph_set:
+          if v_cruise_kph > self.v_ego_kph_set - 5:
             v_cruise_kph = self.v_ego_kph_set
+          else:
+            v_cruise_kph = button_kph
 
     if self.brake_pressed_count > 0 or self.gas_pressed_count > 0 or button_type == ButtonType.cancel:
       self.softHoldActive = False
-      self.cruiseActivate = False
+      self.cruiseActivate = 0
 
+    self.autoResumeFromGasSpeed = Params().get_int("AutoResumeFromGasSpeed")
+    self.autoCancelFromGasMode = Params().get_int("AutoCancelFromGasMode")
     if gas_tok:
       if controls.enabled:
         v_cruise_kph = self.v_cruise_speed_up(v_cruise_kph)
       else:
-        print("Cruise Activete from GasTok")
-        self.cruiseActivate = True
-    elif self.gas_pressed_count < 0:
-      if not controls.enabled and self.v_ego_kph_set > Params().get_int("AutoResumeFromGasSpeed") > 0:
-        print("Cruise Activete from Speed")
-        self.cruiseActivate = True
+        print("Cruise Activate from GasTok")
+        self.cruiseActivate = 1
+    elif self.gas_pressed_count == -1:
+      if not controls.enabled and self.v_ego_kph_set > self.autoResumeFromGasSpeed > 0:
+        if self.cruiseActivate <= 0:
+          print("Cruise Activate from Speed")
+        self.cruiseActivate = 1
     elif self.brake_pressed_count == -1 and not brake_hold_set:
       if not controls.enabled and self.v_ego_kph_set < 70.0 and controls.experimental_mode and Params().get_bool("AutoResumeFromBrakeReleaseTrafficSign"):
-        print("Cruise Activete from TrafficSign")
-        self.cruiseActivate = True
+        print("Cruise Activate from TrafficSign")
+        self.cruiseActivate = 1
+
+    if self.gas_pressed_count == -1:
+      if self.autoCancelFromGasMode > 0:
+        if self.v_ego_kph_set < self.autoResumeFromGasSpeed:
+          print("Cruise Deactivate from gas pressed");
+          self.cruiseActivate = -1
+        if controls.experimental_mode and self.autoCancelFromGasMode == 2:
+          print("Cruise Deactivate from gas pressed: experimental mode");
+          self.cruiseActivate = -1
 
     if self.gas_pressed_count > 0 and self.v_ego_kph_set > v_cruise_kph:
       v_cruise_kph = self.v_ego_kph_set
     elif brake_hold_set and Params().get_int("SoftHoldMode"):
       print("Cruise Activete from SoftHold")
       self.softHoldActive = True
-      self.cruiseActivate = True
+      self.cruiseActivate = 1
 
+## TODO: 가속 추월시 급정거 방지를 위한 Cruise OFF
+## 
     v_cruise_kph = clip(v_cruise_kph, V_CRUISE_MIN, V_CRUISE_MAX)
     return v_cruise_kph
 
@@ -389,13 +403,14 @@ class VCruiseHelper:
           self.cruiseSpeedTarget = 0
       elif self.cruiseSpeedTarget == 0 and self.v_ego_kph_set + 3 < v_cruise_kph and v_cruise_kph > 20.0:  # 주행중 속도가 떨어지면 다시 크루즈연비제어 시작.
         self.cruiseSpeedTarget = v_cruise_kph
-        if self.cruiseSpeedTarget != 0:  ## 크루즈 연비 제어모드 작동중일때: 연비제어 종료지점
-          if self.v_ego_kph_set > self.cruiseSpeedTarget: # 설정속도를 초과하면..
-            self.cruiseSpeedTarget = 0
-          else:
-            v_cruise_kph_apply = self.cruiseSpeedTarget + cruise_eco_control  # + 설정 속도로 설정함.
-      else:
-        self.cruiseSpeedTarget = 0
+
+      if self.cruiseSpeedTarget != 0:  ## 크루즈 연비 제어모드 작동중일때: 연비제어 종료지점
+        if self.v_ego_kph_set > self.cruiseSpeedTarget: # 설정속도를 초과하면..
+          self.cruiseSpeedTarget = 0
+        else:
+          v_cruise_kph_apply = self.cruiseSpeedTarget + cruise_eco_control  # + 설정 속도로 설정함.
+    else:
+      self.cruiseSpeedTarget = 0
 
     return v_cruise_kph_apply
 
