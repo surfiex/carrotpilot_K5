@@ -257,7 +257,7 @@ class VCruiseHelper:
           else:
             v_cruise_kph = button_kph
 
-    if self.brake_pressed_count > 0 or self.gas_pressed_count > 0 or button_type == ButtonType.cancel:
+    if self.brake_pressed_count > 0 or self.gas_pressed_count > 0 or button_type == [ButtonType.cancel, ButtonType.accelCruise, ButtonType.decelCruise]:
       self.softHoldActive = False
       self.cruiseActivate = 0
 
@@ -266,7 +266,7 @@ class VCruiseHelper:
     if gas_tok:
       if controls.enabled:
         v_cruise_kph = self.v_cruise_speed_up(v_cruise_kph)
-      else:
+      elif self.autoResumeFromGasSpeed > 0:
         print("Cruise Activate from GasTok")
         self.cruiseActivate = 1
     elif self.gas_pressed_count == -1:
@@ -279,7 +279,7 @@ class VCruiseHelper:
         print("Cruise Activate from TrafficSign")
         self.cruiseActivate = 1
 
-    if self.gas_pressed_count == -1:
+    if self.gas_pressed_count == -1 and not gas_tok:
       if self.autoCancelFromGasMode > 0:
         if self.v_ego_kph_set < self.autoResumeFromGasSpeed:
           print("Cruise Deactivate from gas pressed");
