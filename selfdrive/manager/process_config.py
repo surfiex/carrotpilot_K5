@@ -49,7 +49,6 @@ def only_offroad(started, params, CP: car.CarParams) -> bool:
 def allow_uploads(started, params, CP: car.CarParams) -> bool:
   enable_logging = not params_memory.get_bool("NoLogging")
   wifi_connected = HARDWARE.get_network_type() == WIFI and not started
-  return False
   return wifi_connected if params_memory.get_bool("DisableOnroadUploads") else enable_logging
 
 def enable_dm(started, params, CP: car.CarParams) -> bool:
@@ -91,7 +90,7 @@ procs = [
   PythonProcess("controlsd", "selfdrive.controls.controlsd", only_onroad),
   PythonProcess("deleter", "system.loggerd.deleter", always_run),
   PythonProcess("dmonitoringd", "selfdrive.monitoring.dmonitoringd", enable_dm, enabled=(not PC or WEBCAM)),
-  PythonProcess("rawgpsd", "system.sensord.rawgps.rawgpsd", qcomgps, enabled=TICI),
+  PythonProcess("qcomgpsd", "system.qcomgpsd.qcomgpsd", qcomgps, enabled=TICI),
   PythonProcess("navd", "selfdrive.navd.navd", only_onroad),
   PythonProcess("pandad", "selfdrive.boardd.pandad", always_run),
   PythonProcess("paramsd", "selfdrive.locationd.paramsd", only_onroad),
@@ -107,11 +106,13 @@ procs = [
 
   # debug procs
   NativeProcess("bridge", "cereal/messaging", ["./bridge"], notcar),
+  PythonProcess("webrtcd", "system.webrtc.webrtcd", notcar),
   PythonProcess("webjoystick", "tools.bodyteleop.web", notcar),
 
-  # FrogPilot procs
-  PythonProcess("mapd", "selfdrive.mapd", osm),
-  PythonProcess("otisserv", "selfdrive.navd.otisserv", always_run),
+  # FrogPilot processes
+  PythonProcess("fleet_manager", "selfdrive.frogpilot.fleetmanager.fleet_manager", always_run),
+  PythonProcess("mapd", "selfdrive.frogpilot.functions.mapd", osm),
+  PythonProcess("otisserv", "selfdrive.frogpilot.navigation.otisserv.otisserv", always_run),
 ]
 
 managed_processes = {p.name: p for p in procs}

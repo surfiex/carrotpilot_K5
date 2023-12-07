@@ -39,7 +39,7 @@ static bool calib_frame_to_full_frame(const UIState *s, float in_x, float in_y, 
 int get_path_length_idx(const cereal::XYZTData::Reader &line, const float path_height) {
   const auto line_x = line.getX();
   int max_idx = 0;
-  for (int i = 1; i < TRAJECTORY_SIZE && line_x[i] <= path_height; ++i) {
+  for (int i = 1; i < line_x.size() && line_x[i] <= path_height; ++i) {
     max_idx = i;
   }
   return max_idx;
@@ -187,9 +187,9 @@ void update_line_data_dist(const UIState* s, const cereal::XYZTData::Reader& lin
     QPolygonF left_points, right_points;
     left_points.reserve(40 + 1);
     right_points.reserve(40 + 1);
-    float idxs[33], line_xs[33], line_ys[33], line_zs[33];
+    float idxs[line_x.size()], line_xs[line_x.size()], line_ys[line_x.size()], line_zs[line_x.size()];
     float   x_prev = 0;
-    for (int i = 0; i < 33; i++) {
+    for (int i = 0; i < line_x.size(); i++) {
         idxs[i] = (float)i;
         if (i>0 && line_x[i] < x_prev) {
             //printf("plan data error.\n");
@@ -214,10 +214,10 @@ void update_line_data_dist(const UIState* s, const cereal::XYZTData::Reader& lin
         float z_off = interp<float>(dist, { 0.0f, 100.0 }, { z_off_start, z_off_end }, false);
         float y_off = interp<float>(z_off, { -3.0f, 0.0f, 3.0f }, { 1.5f, 0.5f, 1.5f }, false);
         y_off *= width_apply;
-        float  idx = interp<float>(dist, line_xs, idxs, 33, false);
-        if (idx >= 33) break;
-        float line_y1 = interp<float>(idx, idxs, line_ys, 33, false);
-        float line_z1 = interp<float>(idx, idxs, line_zs, 33, false);
+        float  idx = interp<float>(dist, line_xs, idxs, line_x.size(), false);
+        if (idx >= line_x.size()) break;
+        float line_y1 = interp<float>(idx, idxs, line_ys, line_x.size(), false);
+        float line_z1 = interp<float>(idx, idxs, line_zs, line_x.size(), false);
 
         QPointF left, right;
         bool l = calib_frame_to_full_frame(s, dist, line_y1 - y_off, line_z1 + z_off, &left);
@@ -249,9 +249,9 @@ void update_line_data_dist3(const UIState* s, const cereal::XYZTData::Reader& li
 
 
     // comma의 데이터는 x,y,z 점들로 이루어짐. 
-    float idxs[33], line_xs[33], line_ys[33], line_zs[33];
+    float idxs[line_x.size()], line_xs[line_x.size()], line_ys[line_x.size()], line_zs[line_x.size()];
     float   x_prev = 0;
-    for (int i = 0; i < 33; i++) {
+    for (int i = 0; i < line_x.size(); i++) {
         idxs[i] = (float)i;
         if (i > 0 && line_x[i] < x_prev) {
             //printf("plan data error.\n");
@@ -362,13 +362,13 @@ void update_line_data_dist3(const UIState* s, const cereal::XYZTData::Reader& li
             float z_off = interp<float>(dist, { 0.0f, 100.0 }, { z_off_start, z_off_end }, false);
             float y_off = interp<float>(z_off, { -3.0f, 0.0f, 3.0f }, { 1.5f, 0.5f, 1.5f }, false);
             y_off *= width_apply;
-            float  idx = interp<float>(dist, line_xs, idxs, 33, false);
-            if (idx >= 33) {
+            float  idx = interp<float>(dist, line_xs, idxs, line_x.size(), false);
+            if (idx >= line_x.size()) {
                 printf("index... %.1f\n", idx);
                 break;
             }
-            float line_y1 = interp<float>(idx, idxs, line_ys, 33, false);
-            float line_z1 = interp<float>(idx, idxs, line_zs, 33, false);
+            float line_y1 = interp<float>(idx, idxs, line_ys, line_x.size(), false);
+            float line_z1 = interp<float>(idx, idxs, line_zs, line_x.size(), false);
 
             QPointF left, right;
             bool l = calib_frame_to_full_frame(s, dist, line_y1 - y_off, line_z1 + z_off, &left);
@@ -394,11 +394,12 @@ void update_model(UIState *s,
                   const cereal::UiPlan::Reader &plan) {
   UIScene &scene = s->scene;
   auto plan_position = plan.getPosition();
-  if (plan_position.getX().size() < TRAJECTORY_SIZE){
+  if (plan_position.getX().size() < model.getPosition().getX().size()) {
     plan_position = model.getPosition();
   }
-  float max_distance = scene.unlimited_road_ui_length ? plan_position.getX()[TRAJECTORY_SIZE - 1] : std::clamp(plan_position.getX()[TRAJECTORY_SIZE - 1],
-                                                                                                               MIN_DRAW_DISTANCE, MAX_DRAW_DISTANCE);
+  float max_distance = scene.unlimited_road_ui_length ? *(plan_position.getX().end() - 1) : 
+                       std::clamp(*(plan_position.getX().end() - 1),
+                                  MIN_DRAW_DISTANCE, MAX_DRAW_DISTANCE);
   auto lead_one = (*s->sm)["radarState"].getRadarState().getLeadOne();
   if (lead_one.getStatus()) {
       //const float lead_d = lead_one.getDRel() * 2.;
@@ -435,8 +436,10 @@ void update_model(UIState *s,
   //  const float lead_d = lead_one.getDRel() * 2.;
   //  max_distance = std::clamp((float)(lead_d - fmin(lead_d * 0.35, 10.)), 0.0f, max_distance);
   //}
-  int show_path_mode = s->show_path_mode;
   SubMaster& sm = *(s->sm);
+  auto lp = sm["lateralPlan"].getLateralPlan();
+  //int show_path_color = (lp.getUseLaneLines()) ? s->show_path_color_lane : s->show_path_color;
+  int show_path_mode = (lp.getUseLaneLines()) ? s->show_path_mode_lane : s->show_path_mode;
   auto controls_state = sm["controlsState"].getControlsState();
   bool longActive = controls_state.getEnabled();
   if (longActive == false) show_path_mode = s->show_path_mode_cruise_off;
@@ -547,12 +550,6 @@ static void update_state(UIState *s) {
   if (sm.updated("carParams")) {
     scene.longitudinal_control = sm["carParams"].getCarParams().getOpenpilotLongitudinalControl();
   }
-  if (sm.updated("carControl")) {
-    const auto carControl = sm["carControl"].getCarControl();
-    if (scene.always_on_lateral) {
-      scene.always_on_lateral_active = !scene.enabled && carControl.getAlwaysOnLateral();
-    }
-  }
   if (sm.updated("carState")) {
     const auto carState = sm["carState"].getCarState();
     if (scene.blind_spot_path || scene.custom_signals) {
@@ -575,32 +572,40 @@ static void update_state(UIState *s) {
     scene.enabled = controlsState.getEnabled();
     scene.experimental_mode = controlsState.getExperimentalMode();
   }
-  if (sm.updated("gpsLocationExternal")) {
-    const auto gpsLocationExternal = sm["gpsLocationExternal"].getGpsLocationExternal();
-    if (scene.compass) {
-      scene.bearing_deg = gpsLocationExternal.getBearingDeg();
+  if (sm.updated("frogpilotCarControl")) {
+    const auto frogpilotCarControl = sm["frogpilotCarControl"].getFrogpilotCarControl();
+    if (scene.always_on_lateral) {
+      scene.always_on_lateral_active = !scene.enabled && frogpilotCarControl.getAlwaysOnLateral();
     }
   }
-  if (sm.updated("lateralPlan")) {
-    const auto lateralPlan = sm["lateralPlan"].getLateralPlan();
+  if (sm.updated("frogpilotLateralPlan")) {
+    const auto frogpilotLateralPlan = sm["frogpilotLateralPlan"].getFrogpilotLateralPlan();
     if (scene.blind_spot_path) {
-      scene.lane_width_left = lateralPlan.getLaneWidthLeft();
-      scene.lane_width_right = lateralPlan.getLaneWidthRight();
+      scene.lane_width_left = frogpilotLateralPlan.getLaneWidthLeft();
+      scene.lane_width_right = frogpilotLateralPlan.getLaneWidthRight();
     }
   }
-  if (sm.updated("longitudinalPlan")) {
-    const auto longitudinalPlan = sm["longitudinalPlan"].getLongitudinalPlan();
+  if (sm.updated("frogpilotLongitudinalPlan")) {
+    const auto frogpilotLongitudinalPlan = sm["frogpilotLongitudinalPlan"].getFrogpilotLongitudinalPlan();
     if (scene.lead_info) {
-      scene.desired_follow = longitudinalPlan.getDesiredFollowDistance();
-      scene.obstacle_distance = longitudinalPlan.getSafeObstacleDistance();
-      scene.obstacle_distance_stock = longitudinalPlan.getSafeObstacleDistanceStock();
-      scene.stopped_equivalence = longitudinalPlan.getStoppedEquivalenceFactor();
-      scene.stopped_equivalence_stock = longitudinalPlan.getStoppedEquivalenceFactorStock();
+      scene.desired_follow = frogpilotLongitudinalPlan.getDesiredFollowDistance();
+      scene.obstacle_distance = frogpilotLongitudinalPlan.getSafeObstacleDistance();
+      scene.obstacle_distance_stock = frogpilotLongitudinalPlan.getSafeObstacleDistanceStock();
+      scene.stopped_equivalence = frogpilotLongitudinalPlan.getStoppedEquivalenceFactor();
+      scene.stopped_equivalence_stock = frogpilotLongitudinalPlan.getStoppedEquivalenceFactorStock();
     }
-    scene.speed_limit = longitudinalPlan.getSlcSpeedLimit();
-    scene.speed_limit_offset = longitudinalPlan.getSlcSpeedLimitOffset();
-    scene.speed_limit_overridden = longitudinalPlan.getSlcOverridden();
-    scene.vtsc_offset = longitudinalPlan.getVtscOffset();
+    if (scene.speed_limit_controller) {
+      scene.speed_limit = frogpilotLongitudinalPlan.getSlcSpeedLimit();
+      scene.speed_limit_offset = frogpilotLongitudinalPlan.getSlcSpeedLimitOffset();
+      scene.speed_limit_overridden = frogpilotLongitudinalPlan.getSlcOverridden();
+    }
+    scene.vtsc_offset = frogpilotLongitudinalPlan.getVtscOffset();
+  }
+  if (sm.updated("gpsLocation")) {
+    const auto gpsLocation = sm["gpsLocation"].getGpsLocation();
+    if (scene.compass) {
+      scene.bearing_deg = gpsLocation.getBearingDeg();
+    }
   }
   if (sm.updated("wideRoadCameraState")) {
     auto cam_state = sm["wideRoadCameraState"].getWideRoadCameraState();
@@ -611,7 +616,7 @@ static void update_state(UIState *s) {
 }
 
 void ui_update_params(UIState *s) {
-  auto params = Params();
+  static Params params = Params();
   s->scene.is_metric = params.getBool("IsMetric");
   s->scene.map_on_left = params.getBool("NavSettingLeftSide");
 
@@ -649,9 +654,9 @@ void ui_update_params(UIState *s) {
   scene.mute_dm = params.getBool("FireTheBabysitter") && params.getBool("MuteDM");
 
   scene.personalities_via_screen = (params.getInt("AdjustablePersonalities") == 2 || params.getInt("AdjustablePersonalities") == 3);
-
+  scene.random_events = params.getBool("RandomEvents");
   scene.rotating_wheel = params.getBool("RotatingWheel");
-  scene.screen_brightness = params.getInt("ScreenBrightness");
+  scene.speed_limit_controller = params.getBool("SpeedLimitController");
   scene.wheel_icon = params.getInt("WheelIcon");
 
 
@@ -692,10 +697,10 @@ void ui_update_params(UIState *s) {
   case 60:
       s->show_path_mode = std::atoi(params.get("ShowPathMode").c_str());;
       s->show_path_color = std::atoi(params.get("ShowPathColor").c_str());;
-      s->show_path_mode_lane = 0;//std::atoi(params.get("ShowPathModeLane").c_str());;
+      s->show_path_mode_lane = std::atoi(params.get("ShowPathModeLane").c_str());;
       break;
   case 70:
-      s->show_path_color_lane = 0;//std::atoi(params.get("ShowPathColorLane").c_str());;
+      s->show_path_color_lane = std::atoi(params.get("ShowPathColorLane").c_str());;
       s->show_path_width = std::atof(params.get("ShowPathWidth").c_str()) / 100.;
       s->show_plot_mode = std::atoi(params.get("ShowPlotMode").c_str());
       break;
@@ -728,6 +733,7 @@ void UIState::updateStatus() {
     }
     started_prev = scene.started;
     emit offroadTransition(!scene.started);
+    //wifi->setTetheringEnabled(scene.started);
   }
 }
 
@@ -735,11 +741,12 @@ UIState::UIState(QObject *parent) : QObject(parent) {
   sm = std::make_unique<SubMaster, const std::initializer_list<const char *>>({
     "modelV2", "controlsState", "liveCalibration", "radarState", "deviceState", "roadCameraState",
     "pandaStates", "carParams", "driverMonitoringState", "carState", "liveLocationKalman", "driverStateV2",
-    "wideRoadCameraState", "managerState", "navInstruction", "navRoute", "uiPlan", "carControl",
-    "gpsLocationExternal", "lateralPlan", "longitudinalPlan",
-    "liveParameters", "roadLimitSpeed", "liveTorqueParameters",
+    "wideRoadCameraState", "managerState", "navInstruction", "navRoute", "uiPlan", "gpsLocation", 
+    "frogpilotCarControl", "frogpilotDeviceState", "frogpilotLateralPlan", "frogpilotLongitudinalPlan",
+    "lateralPlan", "longitudinalPlan","carControl", "liveParameters", "roadLimitSpeed", "liveTorqueParameters",
   });
 
+  Params params;
   language = QString::fromStdString(params.get("LanguageSetting"));
   auto prime_value = params.get("PrimeType");
   if (!prime_value.empty()) {
@@ -751,7 +758,7 @@ UIState::UIState(QObject *parent) : QObject(parent) {
   QObject::connect(timer, &QTimer::timeout, this, &UIState::update);
   timer->start(1000 / UI_FREQ);
 
-  ui_update_params(this);
+  //wifi = new WifiManager(this);
 }
 
 void UIState::update() {
@@ -765,6 +772,7 @@ void UIState::update() {
   emit uiUpdate(*this);
 
   // Update FrogPilot variables when they are changed
+  static Params paramsMemory{"/dev/shm/params"};
   static bool toggles_checked = false;
   if (paramsMemory.getBool("FrogPilotTogglesUpdated")) {
     emit uiUpdateFrogPilotParams();
@@ -773,14 +781,14 @@ void UIState::update() {
       paramsMemory.putBoolNonBlocking("FrogPilotTogglesUpdated", false);
     }
     toggles_checked = !toggles_checked;
-
-    // FrogPilot variables that need to be checked on toggle change
-    scene.screen_brightness = params.getInt("ScreenBrightness");
   }
 
   // FrogPilot live variables that need to be constantly checked
   if (scene.conditional_experimental) {
     scene.conditional_status = paramsMemory.getInt("CEStatus");
+  }
+  if (scene.random_events) {
+    scene.current_random_event = paramsMemory.getInt("CurrentRandomEvent");
   }
 }
 

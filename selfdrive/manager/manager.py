@@ -38,6 +38,8 @@ def manager_init() -> None:
   params.clear_all(ParamKeyType.CLEAR_ON_MANAGER_START)
   params.clear_all(ParamKeyType.CLEAR_ON_ONROAD_TRANSITION)
   params.clear_all(ParamKeyType.CLEAR_ON_OFFROAD_TRANSITION)
+  if is_release_branch():
+    params.clear_all(ParamKeyType.DEVELOPMENT_ONLY)
 
   default_params: List[Tuple[str, Union[str, bytes]]] = [
     ("CompletedTrainingVersion", "0"),
@@ -74,6 +76,9 @@ def manager_init() -> None:
     ("ShowPlotMode", "0"),
     ("AutoResumeFromGasSpeed", "0"),
     ("AutoCancelFromGasMode", "0"),    
+    ("AutoCurveSpeedCtrlUse", "0"),
+    ("AutoCurveSpeedFactor", "100"),
+    ("AutoCurveSpeedFactorIn", "50"),
     ("AutoNaviSpeedCtrlEnd", "6"),
     ("AutoNaviSpeedBumpTime", "1"),
     ("AutoNaviSpeedBumpSpeed", "35"),
@@ -85,6 +90,7 @@ def manager_init() -> None:
     ("AChangeCost", "200"), 
     ("AChangeCostStart", "40"), 
     ("CruiseSpeedUnit", "10"),      
+    ("LiveSteerRatioApply", "100"),      
     ("LiveTorqueCache", "0"),      
     ("CruiseMaxVals1", "160"),
     ("CruiseMaxVals2", "120"),
@@ -104,6 +110,13 @@ def manager_init() -> None:
     ("TFollowSpeedAddM", "0"),
     ("SoftHoldMode", "0"),       
     ("CruiseEcoControl", "4"),
+    ("UseLaneLineSpeed", "0"),    
+    ("PathOffset", "0"),  
+    ("LateralTorqueCustom", "0"),       
+    ("LateralTorqueAccelFactor", "2500"),       
+    ("LateralTorqueFriction", "100"),       
+    ("CruiseOnDist", "0"),
+    ("SteerRatioApply", "0"),
   ]
   if not PC:
     default_params.append(("LastUpdateTime", datetime.datetime.utcnow().isoformat().encode('utf8')))
@@ -116,12 +129,8 @@ def manager_init() -> None:
     if params.get(k) is None:
       params.put(k, v)
 
-  # is this dashcam?
-  if os.getenv("PASSIVE") is not None:
-    params.put_bool("Passive", bool(int(os.getenv("PASSIVE", "0"))))
-
-  if params.get("Passive") is None:
-    raise Exception("Passive must be set to continue")
+  # is this a dashcam build?
+  params.put_bool("Passive", bool(int(os.getenv("PASSIVE", "0"))))
 
   # Create folders needed for msgq
   try:
@@ -163,6 +172,7 @@ def manager_init() -> None:
                        dirty=is_dirty(),
                        device=HARDWARE.get_device_type())
 
+  # Remove the error log on boot to prevent old errors from hanging around
   if os.path.isfile(os.path.join(sentry.CRASHES_DIR, 'error.txt')):
     os.remove(os.path.join(sentry.CRASHES_DIR, 'error.txt'))
 
@@ -182,6 +192,13 @@ def manager_cleanup() -> None:
 
   cloudlog.info("everything is dead")
 
+def is_running_on_wsl2():
+  try:
+    with open('/proc/version', 'r') as f:
+      contents = f.read()
+      return 'WSL2' in contents or 'Ubuntu' in contents
+  except FileNotFoundError:
+    return False
 
 def manager_thread() -> None:
 
@@ -235,14 +252,14 @@ def manager_thread() -> None:
     cloudlog.debug(running)
 
     # send managerState
-    msg = messaging.new_message('managerState')
+    msg = messaging.new_message('managerState', valid=True)
     msg.managerState.processes = [p.get_process_state_msg() for p in managed_processes.values()]
     pm.send('managerState', msg)
 
     # Exit main loop when uninstall/shutdown/reboot is needed
     shutdown = False
     for param in ("DoUninstall", "DoShutdown", "DoReboot"):
-      if params.get_bool(param):
+      if params.get_bool(param) and not is_running_on_wsl2():
         shutdown = True
         params.put("LastManagerExitReason", f"{param} {datetime.datetime.now()}")
         cloudlog.warning(f"Shutting down manager - {param} set")
@@ -261,7 +278,7 @@ def main() -> None:
     os.remove("/data/openpilot/prebuilt")
 
   # Set the desired model on boot
-  subprocess.run(["python3", "/data/openpilot/selfdrive/modeld/model_switcher.py"])
+  subprocess.run(["python3", "/data/openpilot/selfdrive/frogpilot/functions/model_switcher.py"])
 
   # Start UI early so prepare can happen in the background
   if not prepare_only:

@@ -10,6 +10,7 @@ from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.pid import PIDController
 from openpilot.selfdrive.controls.lib.vehicle_model import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.selfdrive.modeld.constants import ModelConstants
+from openpilot.common.params import Params
 
 # At higher speeds (25+mph) we can assume:
 # Lateral acceleration achieved by a specific car correlates to
@@ -110,13 +111,36 @@ class LatControlTorque(LatControl):
       # Scaling the lateral acceleration "friction response" could be helpful for some.
       # Increase for a stronger response, decrease for a weaker response.
       self.lat_accel_friction_factor = 0.7 # in [0, 3], in 0.05 increments. 3 is arbitrary safety limit
+      
+
+    #ajouatom      
+    self.paramsCount = 0
+    self.lateralTorqueCustom = int(Params().get("LateralTorqueCustom", encoding="utf8"))
+    self.lateralTorqueAccelFactor = float(int(Params().get("LateralTorqueAccelFactor", encoding="utf8")))*0.001
+    self.lateralTorqueFriction = float(int(Params().get("LateralTorqueFriction", encoding="utf8")))*0.001
+
 
   def update_live_torque_params(self, latAccelFactor, latAccelOffset, friction):
+    if self.lateralTorqueCustom > 0: 
+      return
     self.torque_params.latAccelFactor = latAccelFactor
     self.torque_params.latAccelOffset = latAccelOffset
     self.torque_params.friction = friction
 
-  def update(self, active, CS, VM, params, last_actuators, steer_limited, desired_curvature, desired_curvature_rate, llk, lat_plan=None, model_data=None):
+  def update_params(self):
+    self.paramsCount += 1
+    if self.paramsCount > 30:
+      self.paramsCount = 0
+    elif self.paramsCount == 10:
+      self.lateralTorqueCustom = int(Params().get("LateralTorqueCustom", encoding="utf8"))
+      self.lateralTorqueAccelFactor = float(int(Params().get("LateralTorqueAccelFactor", encoding="utf8")))*0.001
+      self.lateralTorqueFriction = float(int(Params().get("LateralTorqueFriction", encoding="utf8")))*0.001
+      if self.lateralTorqueCustom > 0:
+        self.torque_params.latAccelFactor = self.lateralTorqueAccelFactor
+        self.torque_params.friction = self.lateralTorqueFriction
+
+  def update(self, active, CS, VM, params, steer_limited, desired_curvature, desired_curvature_rate, llk, lat_plan=None, model_data=None):
+    self.update_params()
     pid_log = log.ControlsState.LateralTorqueState.new_message()
     nn_log = None
 

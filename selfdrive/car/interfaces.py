@@ -227,14 +227,16 @@ class CarInterfaceBase(ABC):
     ret = CarInterfaceBase.get_std_params(candidate)
     ret = cls._get_params(ret, candidate, fingerprint, car_fw, experimental_long, docs)
 
+    if "SIMULATION" in os.environ:  #ajouatom why?
+      ret.steerControlType = car.CarParams.SteerControlType.angle
     # Enable torque controller for all cars that do not use angle based steering
     if ret.steerControlType != car.CarParams.SteerControlType.angle:
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
       eps_firmware = str(next((fw.fwVersion for fw in car_fw if fw.ecu == "eps"), ""))
       model, similarity_score = get_nn_model_path(candidate, eps_firmware)
       if model is not None:
-        ret.lateralTuning.torque.nnModelName = candidate
-        ret.lateralTuning.torque.nnModelFuzzyMatch = (similarity_score < 0.99)
+        Params("/dev/shm/params").put_bool("NNFFModelFuzzyMatch", similarity_score < 0.99)
+        Params("/dev/shm/params").put("NNFFModelName", candidate)
 
     # Vehicle mass is published curb weight plus assumed payload such as a human driver; notCars have no assumed payload
     if not ret.notCar:
@@ -493,8 +495,8 @@ class CarStateBase(ABC):
 
     self.display_menu = False
     self.distance_previously_pressed = False
-    self.enable_cruise = self.params_memory.get_bool("EnableCruise", False)
     self.lkas_previously_pressed = False
+    self.main_enabled = False
     self.profile_restored = False
 
     self.display_timer = 0

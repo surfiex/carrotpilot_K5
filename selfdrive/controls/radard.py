@@ -104,7 +104,7 @@ class Track:
     if abs(self.aLeadK) < 0.5:
       self.aLeadTau = aLeadTau
     else:
-      self.aLeadTau = self.aLeadTau * 0.9
+      self.aLeadTau *= 0.9
 
     self.cnt += 1
 
@@ -507,6 +507,7 @@ class RadarD:
 
     # publish tracks for UI debugging (keep last)
     tracks_msg = messaging.new_message('liveTracks', len(self.tracks))
+    tracks_msg.valid = self.radar_state_valid
     for index, tid in enumerate(sorted(self.tracks.keys())):
       tracks_msg.liveTracks[index] = {
         "trackId": tid,
