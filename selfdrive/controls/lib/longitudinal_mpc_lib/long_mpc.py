@@ -666,7 +666,7 @@ class LongitudinalMpc:
     else: #XState.lead, XState.cruise, XState.e2eCruise
       if self.status:
         self.xState = XState.lead
-      elif self.trafficState == TrafficState.red and not carstate.gasPressed and self.trafficStopMode == 0:
+      elif self.trafficState == TrafficState.red and not carstate.gasPressed and self.trafficStopMode > 0:
         self.xState = XState.e2eStop
         self.stopDist = self.xStop
       else:
