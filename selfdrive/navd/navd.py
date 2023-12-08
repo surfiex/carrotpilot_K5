@@ -402,7 +402,7 @@ class RouteEngine:
       else:
         self.noo_condition = False  # Not approaching any NoO maneuver
 
-    send_frogpilot_navigation()
+    self.send_frogpilot_navigation()
 
   def send_route(self):
     coords = []
