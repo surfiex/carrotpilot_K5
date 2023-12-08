@@ -295,6 +295,11 @@ class LongitudinalMpc:
     self.xStop = 0.0
     self.stopDist = 0.0
     self.debugLongText = ""
+    self.myDrivingMode = 3 # general mode
+    self.mySafeModeFactor = 0.8
+    self.myEcoModeFactor = 0.8
+    self.mySafeFactor = 1.0
+
     self.solver = AcadosOcpSolverCython(MODEL_NAME, ACADOS_SOLVER_TYPE, N)
     self.reset()
     self.source = SOURCES[2]
@@ -441,7 +446,10 @@ class LongitudinalMpc:
       t_follow = t_follow / t_follow_offset
 
     if v_ego >= self.v_ego_prev:
-      t_follow = interp(v_ego * CV.MS_TO_KPH, [0, 40, 100], [t_follow, t_follow + self.tFollowSpeedAddM, t_follow + self.tFollowSpeedAdd]) 
+      #t_follow = interp(v_ego * CV.MS_TO_KPH, [0, 40, 100], [t_follow, t_follow + self.tFollowSpeedAddM, t_follow + self.tFollowSpeedAdd]) 
+      t_follow = interp(v_ego * CV.MS_TO_KPH, [0, 100], [t_follow, t_follow + self.tFollowSpeedAdd]) 
+      
+    self.t_follow = max(0.6, self.t_follow * (2.0 - self.mySafeFactor)) 
     self.v_ego_prev = v_ego
 
     # LongitudinalPlan variables for onroad driving insights
@@ -579,6 +587,17 @@ class LongitudinalMpc:
 
   def update_params(self):
     self.lo_timer += 1
+    
+    if self.lo_timer % 2 == 0:
+      self.myDrivingMode = Params().get_int("MyDrivingMode")
+      self.myEcoModeFactor = float(Params().get_int("MyEcoModeFactor")) / 100.
+      self.mySafeModeFactor = float(Params().get_int("MySafeModeFactor")) / 100.
+      self.mySafeFactor = 1.0
+      if self.myDrivingMode == 1: # eco
+        self.mySafeFactor = self.myEcoModeFactor
+      elif self.myDrivingMode == 2: #safe
+        self.mySafeFactor = self.mySafeModeFactor
+
     if self.lo_timer > 200:
       self.lo_timer = 0
     elif self.lo_timer == 20:
@@ -666,7 +685,7 @@ class LongitudinalMpc:
     else: #XState.lead, XState.cruise, XState.e2eCruise
       if self.status:
         self.xState = XState.lead
-      elif self.trafficState == TrafficState.red and not carstate.gasPressed and self.trafficStopMode > 0:
+      elif self.trafficState == TrafficState.red and not carstate.gasPressed and self.myDrivingMode != 4 and self.trafficStopMode > 0:
         self.xState = XState.e2eStop
         self.stopDist = self.xStop
       else:
@@ -677,6 +696,7 @@ class LongitudinalMpc:
 
     mode = 'blended' if self.xState in [XState.e2ePrepare] else 'acc'
 
+    self.comfort_brake *= self.mySafeFactor
     self.stopDist -= (v_ego * DT_MDL)
     if self.stopDist < 0:
       self.stopDist = 0.

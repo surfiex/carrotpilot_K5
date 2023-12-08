@@ -120,6 +120,19 @@
     },
     {
       "group": "가속설정",
+      "name": "MyEcoModeFactor",
+      "title": "연비가속비율(80%)",
+      "descr": "일반모드대비 가속비율을 지정합니다.",
+      "egroup": "ACCEL",
+      "etitle": "EcoAccelRatio(80%)",
+      "edescr": "",
+      "min": 10,
+      "max": 95,
+      "default": 80,
+      "unit": 1
+    },
+    {
+      "group": "가속설정",
       "name": "CruiseMaxVals1",
       "title": "가속설정1:0km/h(160)",
       "descr": "Normal mode only (x0.01m/s^2)",
@@ -194,6 +207,19 @@
       "min": 1,
       "max": 250,
       "default": 60,
+      "unit": 5
+    },
+    {
+      "group": "가속설정",
+      "name": "MySafeModeFactor",
+      "title": "안전비율(80%)",
+      "descr": "가속도, 정지거리, 감속율, 차간거리를 평소보다 안전하게 유지합니다.",
+      "egroup": "ACCEL",
+      "etitle": "SafeModeRatio(80%)",
+      "edescr": "",
+      "min": 10,
+      "max": 90,
+      "default": 80,
       "unit": 5
     },
     {
@@ -757,16 +783,16 @@
     },
     {
       "group": "시작",
-      "name": "HotspotOnBoot",
-      "title": "부팅시 핫스팟켜기",
+      "name": "SoundVolumeAdjust",
+      "title": "사운드볼륨조절(100%)",
       "descr": "",
       "egroup": "START",
-      "etitle": "Enable HotSpot(0)",
+      "etitle": "Sound Volume adjust(100%)",
       "edescr": "",
-      "min": 0,
-      "max": 1,
+      "min": 5,
+      "max": 100,
       "default": 0,
-      "unit": 1
+      "unit": 5
     },
     {
       "group": "차량간격",
@@ -784,10 +810,10 @@
     {
       "group": "차량간격",
       "name": "TFollowSpeedAddM",
-      "title": "TF(s): 차량간격시간 추가40km/hx0.01s(0)",
+      "title": "(x)TF(s): 차량간격시간 추가40km/hx0.01s(0)",
       "descr": "속도(최대40km/h)에 따라 추가되는 값",
       "egroup": "FDIST",
-      "etitle": "TF(s): Additinal TFs 40km/hx0.01s(0)",
+      "etitle": "(x)TF(s): Additinal TFs 40km/hx0.01s(0)",
       "edescr": "Speed(max 40km/h) depenent Additinal TFollow(dTF)",
       "min": -100,
       "max": 200,
@@ -832,6 +858,19 @@
       "max": 100,
       "default": 30,
       "unit": 10
+    },
+    {
+      "group": "가속설정",
+      "name": "MyDrivingMode",
+      "title": "드라이브모드:(3)",
+      "descr": "1:연비,2:안전,3:일반,4:고속(신호무시)",
+      "egroup": "ACCEL",
+      "etitle": "DrivingMode:Init(3)",
+      "edescr": "1:Eco,2:Safe,3:General,4:HighSpeed",
+      "min": 1,
+      "max": 4,
+      "default": 3,
+      "unit": 1
     },
     {
       "group": "감속제어",

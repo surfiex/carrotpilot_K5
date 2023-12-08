@@ -504,6 +504,8 @@ class CarStateBase(ABC):
     self.personality_profile = self.params.get_int("LongitudinalPersonality")
     self.previous_personality_profile = self.params.get_int("LongitudinalPersonality")
 
+    self.cruise_gap_count = 0 # ajouatom
+
   def update_speed_kf(self, v_ego_raw):
     if abs(v_ego_raw - self.v_ego_kf.x[0][0]) > 2.0:  # Prevent large accelerations when car starts at non zero speed
       self.v_ego_kf.x = [[v_ego_raw], [0.0]]
@@ -615,8 +617,6 @@ def get_interface_attr(attr: str, combine_brands: bool = False, ignore_none: boo
     try:
       brand_name = car_folder.split('/')[-1]
       brand_values = __import__(f'openpilot.selfdrive.car.{brand_name}.values', fromlist=[attr])
-      if Params().get("CarBrand") is None:
-        Params().put("CarBrand", car_folder.capitalize())
       if hasattr(brand_values, attr) or not ignore_none:
         attr_data = getattr(brand_values, attr, None)
       else:

@@ -3,36 +3,30 @@
 #include <QStringList>
 
 #include "selfdrive/ui/qt/offroad/settings.h"
-#include "selfdrive/ui/qt/widgets/scrollview.h"
 
-class FrogPilotVehiclesPanel : public QFrame {
+class FrogPilotVehiclesPanel : public ListWidget {
   Q_OBJECT
 
 public:
-  explicit FrogPilotVehiclesPanel(QWidget *parent = 0);
+  explicit FrogPilotVehiclesPanel(SettingsWindow *parent);
 
 private:
   void setModels();
-  void updateToggles();
+  void setToggles();
 
   ButtonControl *selectMakeButton;
   ButtonControl *selectModelButton;
 
-  ToggleControl *lockDoorsToggle;
-  ToggleControl *sngHackToggle;
-  ToggleControl *tss2TuneToggle;
+  ToggleControl *lockDoorsToggle=0;
+  ToggleControl *sngHackToggle=0;
+  ToggleControl *tss2TuneToggle=0;
 
-  ToggleControl *evTableToggle;
-  ToggleControl *lowerVoltToggle;
+  ToggleControl *evTableToggle=0;
+  ToggleControl *longPitchToggle=0;
+  ToggleControl *lowerVoltToggle=0;
 
   QString brandSelection;
   QStringList models;
-
-  ListWidget *carSelectionList;
-  ListWidget *gmToggles;
-  ListWidget *toyotaToggles;
-  QStackedLayout *mainLayout;
-  QWidget *vehiclesWidget;
 
   Params params;
 };

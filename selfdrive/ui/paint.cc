@@ -332,7 +332,7 @@ static NVGcolor get_tpms_color(float tpms) {
 
 static const char *get_tpms_text(float tpms) {
     if (tpms < 5 || tpms > 60)
-        return "35";// "  -";
+        return "  -";
 
 
     static char str[32];
@@ -985,22 +985,34 @@ void DrawApilot::drawGapInfo(const UIState* s, int x, int y) {
     //auto controls_state = sm["controlsState"].getControlsState();
     //const auto lp = sm["longitudinalPlan"].getLongitudinalPlan();
     // 타겟좌측 : 갭표시
-    int myDrivingMode = Params().getInt("AccelerationProfile"); //HW: controls_state.getMyDrivingMode();
     //int active = controls_state.getActive();
     float gap = Params().getInt("LongitudinalPersonality")+1;// lp.getCruiseGap();
     //float tFollow = 1.0;// HW: lp.getTFollow();
     int gap1 = gap;// controls_state.getLongCruiseGap(); // car_state.getCruiseGap();
 #ifdef __TEST
-    myDrivingMode = 3;
+    drivingMode = 3;
 #endif
     char strDrivingMode[128];
-    switch (myDrivingMode)
-    {
-    case 1: strcpy(strDrivingMode, "ECO"); break;
-    case 2: strcpy(strDrivingMode, "NOR"); break;
-    case 3: strcpy(strDrivingMode, "SPT"); break;
-    default:
-        strcpy(strDrivingMode, "ERR"); break;
+    int drivingMode = Params().getInt("AccelerationProfile"); //HW: controls_state.getMyDrivingMode();
+    if (drivingMode == 2) { // apilot driving mode
+        int myDrivingMode = Params().getInt("MyDrivingMode");
+        switch (myDrivingMode) {
+        case 1: strcpy(strDrivingMode, tr("ECO").toStdString().c_str()); break;
+        case 2: strcpy(strDrivingMode, tr("SAFE").toStdString().c_str()); break;
+        case 3: strcpy(strDrivingMode, tr("NORM").toStdString().c_str()); break;
+        case 4: strcpy(strDrivingMode, tr("HIGH").toStdString().c_str()); break;
+        default: strcpy(strDrivingMode, tr("ERRM").toStdString().c_str()); break;
+        }
+    }
+    else { // frogpilot mode..
+        switch (drivingMode)
+        {
+        case 1: strcpy(strDrivingMode, "ECO"); break;
+        case 2: strcpy(strDrivingMode, "NOR"); break;
+        case 3: strcpy(strDrivingMode, "SPT"); break;
+        default:
+            strcpy(strDrivingMode, "ERR"); break;
+        }
     }
 
     int dxGap = -128 - 10 - 40;
@@ -1012,9 +1024,9 @@ void DrawApilot::drawGapInfo(const UIState* s, int x, int y) {
 
         ui_draw_text(s, x + dxGap + 15, y + 120.0, strDrivingMode, 30, COLOR_WHITE, BOLD);
     }
-    static int _myDrivingMode = 0;
-    if (_myDrivingMode != myDrivingMode) ui_draw_text_a(s, x + dxGap + 15, y + 120, strDrivingMode, 30, COLOR_WHITE, BOLD);
-    _myDrivingMode = myDrivingMode;
+    static char _strDrivingMode[128]="";
+    if (strcmp(strDrivingMode, _strDrivingMode)) ui_draw_text_a(s, x + dxGap + 15, y + 120, strDrivingMode, 30, COLOR_WHITE, BOLD);
+    strcpy(_strDrivingMode, strDrivingMode);
     dxGap -= 60;
     if (s->show_gap_info > 0) {
 #ifdef __TEST

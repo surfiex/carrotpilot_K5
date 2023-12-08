@@ -10,6 +10,7 @@ from openpilot.common.basedir import BASEDIR
 from openpilot.common.filter_simple import FirstOrderFilter
 
 from openpilot.system import micd
+from openpilot.system.hardware import TICI
 
 from openpilot.common.realtime import Ratekeeper
 from openpilot.system.hardware import PC
@@ -99,6 +100,7 @@ class Soundd:
     self.params_memory = Params("/dev/shm/params")
 
     self.update_frogpilot_params()
+    self.soundVolumeAdjust = 1.0
 
     self.load_sounds()
 
@@ -190,23 +192,20 @@ class Soundd:
     # sounddevice must be imported after forking processes
     import sounddevice as sd
 
-    rk = Ratekeeper(20)
+    if TICI:
+      micd.wait_for_devices(sd) # wait for alsa to be initialized on device
 
-    sm = messaging.SubMaster(['controlsState', 'microphone'])
+    with sd.OutputStream(channels=1, samplerate=SAMPLE_RATE, callback=self.callback) as stream:
+      rk = Ratekeeper(20)
+      sm = messaging.SubMaster(['controlsState', 'microphone'])
 
-    if PC:
-      device = None
-    else:
-      device = "sdm845-tavil-snd-card: - (hw:0,0)"
-
-    with sd.OutputStream(device=device, channels=1, samplerate=SAMPLE_RATE, callback=self.callback) as stream:
       cloudlog.info(f"soundd stream started: {stream.samplerate=} {stream.channels=} {stream.dtype=} {stream.device=}")
       while True:
         sm.update(0)
 
         if sm.updated['microphone'] and self.current_alert == AudibleAlert.none: # only update volume filter when not playing alert
           self.spl_filter_weighted.update(sm["microphone"].soundPressureWeightedDb)
-          self.current_volume = max(self.calculate_volume(float(self.spl_filter_weighted.x)) - self.silent_mode, 0)
+          self.current_volume = max(self.calculate_volume(float(self.spl_filter_weighted.x)) - self.silent_mode, 0) * self.soundVolumeAdjust
 
         self.get_audible_alert(sm)
 
@@ -214,9 +213,11 @@ class Soundd:
 
         assert stream.active
 
-    # Update FrogPilot parameters
-    if self.params_memory.get_bool("FrogPilotTogglesUpdated"):
-      self.update_frogpilot_params()
+        # Update FrogPilot parameters
+        if self.params_memory.get_bool("FrogPilotTogglesUpdated"):
+          self.update_frogpilot_params()
+
+        self.soundVolumeAdjust = float(self.params.get_int("SoundVolumeAdjust"))/100.
 
   def update_frogpilot_params(self):
     self.silent_mode = self.params.get_bool("SilentMode")
