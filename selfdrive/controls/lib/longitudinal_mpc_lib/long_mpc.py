@@ -60,6 +60,7 @@ T_IDXS_LST = [index_function(idx, max_val=MAX_T, max_idx=N) for idx in range(N+1
 T_IDXS = np.array(T_IDXS_LST)
 FCW_IDXS = T_IDXS < 5.0
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
+T_FOLLOW = 1.45
 COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 6.0
 
@@ -236,7 +237,8 @@ def gen_long_ocp():
 
   x0 = np.zeros(X_DIM)
   ocp.constraints.x0 = x0
-  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR, COMFORT_BRAKE, STOP_DISTANCE])
+  #ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR, COMFORT_BRAKE, STOP_DISTANCE])
+  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, T_FOLLOW, LEAD_DANGER_FACTOR, COMFORT_BRAKE, STOP_DISTANCE])
 
   # We put all constraint cost weights to 0 and only set them at runtime
   cost_weights = np.zeros(CONSTR_DIM)
@@ -431,6 +433,7 @@ class LongitudinalMpc:
     
     self.comfort_brake = COMFORT_BRAKE
     self.stop_distance = STOP_DISTANCE
+    applyStopDistance = self.stop_distance  * (2.0 - self.mySafeFactor)
     
 
     # Offset by FrogAi for FrogPilot for a more natural takeoff with a lead
@@ -488,7 +491,7 @@ class LongitudinalMpc:
       v_cruise_clipped = np.clip(v_cruise * np.ones(N+1),
                                  v_lower,
                                  v_upper)
-      cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow, self.comfort_brake, self.stop_distance + self.fakeCruiseDistance)
+      cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow, self.comfort_brake, applyStopDistance + self.fakeCruiseDistance)
       x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle, x2])
       self.source = SOURCES[np.argmin(x_obstacles[0])]
 
@@ -524,7 +527,7 @@ class LongitudinalMpc:
     self.params[:,3] = np.copy(self.prev_a)
     self.params[:,4] = t_follow
     self.params[:,6] = self.comfort_brake
-    self.params[:,7] = self.stop_distance
+    self.params[:,7] = applyStopDistance
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
@@ -685,7 +688,8 @@ class LongitudinalMpc:
     else: #XState.lead, XState.cruise, XState.e2eCruise
       if self.status:
         self.xState = XState.lead
-      elif self.trafficState == TrafficState.red and not carstate.gasPressed and self.myDrivingMode != 4 and self.trafficStopMode > 0:
+      #elif self.trafficState == TrafficState.red and not carstate.gasPressed and self.myDrivingMode != 4 and self.trafficStopMode > 0:
+      elif self.trafficState == TrafficState.red and self.myDrivingMode != 4 and self.trafficStopMode > 0:
         self.xState = XState.e2eStop
         self.stopDist = self.xStop
       else:
