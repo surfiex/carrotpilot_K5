@@ -35,6 +35,8 @@ FrogPilotNavigationPanel::FrogPilotNavigationPanel(QWidget *parent) : QFrame(par
 
   list->addItem(offlineMapsSize = new LabelControl(tr("Offline Maps Size"), formatSize(calculateDirectorySize(offlineFolderPath))));
   offlineMapsSize->setVisible(true);
+  list->addItem(lastMapsDownload = new LabelControl(tr("Last Download"), ""));
+  lastMapsDownload->setVisible(!params.get("LastMapsUpdate").empty());
   list->addItem(offlineMapsStatus = new LabelControl(tr("Offline Maps Status"), ""));
   offlineMapsStatus->setVisible(false);
   list->addItem(offlineMapsETA = new LabelControl(tr("Offline Maps ETA"), ""));
@@ -75,6 +77,7 @@ FrogPilotNavigationPanel::FrogPilotNavigationPanel(QWidget *parent) : QFrame(par
   QObject::connect(uiState(), &UIState::uiUpdate, this, &FrogPilotNavigationPanel::updateState);
 
   checkIfUpdateMissed();
+  updateDownloadedLabel();
 }
 
 void FrogPilotNavigationPanel::hideEvent(QHideEvent *event) {
@@ -97,6 +100,7 @@ void FrogPilotNavigationPanel::updateStatuses() {
 
   if (downloadedFiles >= totalFiles && !osmDownloadProgress.empty()) {
     downloadActive = false;
+    updateDownloadedLabel();
   }
 
   if (osmDownloadProgress != previousOSMDownloadProgress && isVisible()) {
@@ -124,38 +128,48 @@ void FrogPilotNavigationPanel::updateVisibility(bool visibility) {
   offlineMapsETA->setVisible(visibility);
   offlineMapsStatus->setVisible(visibility);
   downloadOfflineMapsButton->setVisible(!visibility);
-  removeOfflineMapsButton->setVisible(QDir(offlineFolderPath).exists());
+  lastMapsDownload->setVisible(QDir(offlineFolderPath).exists() && !downloadActive);
+  removeOfflineMapsButton->setVisible(QDir(offlineFolderPath).exists() && !downloadActive);
 }
 
 void FrogPilotNavigationPanel::checkIfUpdateMissed() {
-  std::string lastScheduledUpdate = params.get("LastScheduledUpdate");
+  std::string lastMapsUpdate = params.get("LastMapsUpdate");
 
-  if (lastScheduledUpdate.empty() || schedule == 0) {
+  if (lastMapsUpdate.empty() || schedule == 0) {
     return;
   }
 
-  std::time_t t = std::time(nullptr);
-  std::tm *now = std::localtime(&t);
+  std::time_t currentTime = std::time(nullptr);
+  std::tm *now = std::localtime(&currentTime);
 
   std::tm lastUpdate = {};
-  sscanf(lastScheduledUpdate.c_str(), "%d-%d-%d", &lastUpdate.tm_year, &lastUpdate.tm_mon, &lastUpdate.tm_mday);
+  sscanf(lastMapsUpdate.c_str(), "%d-%d-%d", &lastUpdate.tm_year, &lastUpdate.tm_mon, &lastUpdate.tm_mday);
   lastUpdate.tm_year -= 1900;
   lastUpdate.tm_mon -= 1;
 
   std::time_t lastUpdateTime = std::mktime(&lastUpdate);
+  std::tm *lastUpdateDay = std::localtime(&lastUpdateTime);
 
   if (schedule == 1) {
-    bool isTodaySunday = (now->tm_wday == 0);
-    std::tm *lastUpdateDay = std::localtime(&lastUpdateTime);
-    bool wasLastUpdateSunday = (lastUpdateDay->tm_wday == 0);
-
-    schedulePending = (isTodaySunday && !wasLastUpdateSunday) || (now->tm_wday > lastUpdateDay->tm_wday);
+    schedulePending = (now->tm_wday == 0 && lastUpdateDay->tm_wday != 0) || (now->tm_wday > lastUpdateDay->tm_wday);
   } else if (schedule == 2) {
-    bool isTodayFirstOfMonth = (now->tm_mday == 1);
-    bool wasLastUpdateFirstOfMonth = (lastUpdate.tm_mday == 1);
-
-    schedulePending = (isTodayFirstOfMonth && !wasLastUpdateFirstOfMonth) || (now->tm_mon != lastUpdate.tm_mon);
+    schedulePending = (now->tm_mday == 1 && lastUpdate.tm_mday != 1) || (now->tm_mon != lastUpdate.tm_mon);
   }
+}
+
+void FrogPilotNavigationPanel::updateDownloadedLabel() {
+  std::time_t t = std::time(nullptr);
+  std::tm *now = std::localtime(&t);
+  std::string lastMapsUpdate = std::to_string(now->tm_year + 1900) + "-" +
+                               std::to_string(now->tm_mon + 1).insert(0, 2 - std::to_string(now->tm_mon + 1).length(), '0') + "-" +
+                               std::to_string(now->tm_mday).insert(0, 2 - std::to_string(now->tm_mday).length(), '0');
+  params.put("LastMapsUpdate", lastMapsUpdate);
+
+  QDate date = QDate::fromString(QString::fromStdString(lastMapsUpdate), "yyyy-MM-dd");
+  int day = date.day();
+  std::string suffix = (day == 1 || day == 21 || day == 31) ? "st" : (day == 2 || day == 22) ? "nd" : (day == 3 || day == 23) ? "rd" : "th";
+  QString formattedDate = date.toString("MMMM d") + QString::fromStdString(suffix) + date.toString(", yyyy");
+  lastMapsDownload->setText(formattedDate);
 }
 
 void FrogPilotNavigationPanel::downloadSchedule() {
@@ -170,11 +184,6 @@ void FrogPilotNavigationPanel::downloadSchedule() {
     downloadMaps();
     scheduleCompleted = true;
 
-    char dateStr[11];
-    snprintf(dateStr, sizeof(dateStr), "%04d-%02d-%02d", now->tm_year + 1900, now->tm_mon + 1, now->tm_mday);
-    std::string lastScheduledUpdate(dateStr);
-
-    params.put("LastScheduledUpdate", lastScheduledUpdate);
     if (schedulePending) {
       schedulePending = false;
       params.putBool("SchedulePending", false);

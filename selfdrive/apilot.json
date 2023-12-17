@@ -250,6 +250,32 @@
     },
     {
       "group": "주행튜닝",
+      "name": "ALeadTau",
+      "title": "ALeadTaux0.01(150)",
+      "descr": "값이 작아지면 선행차 가속도에 민감해짐",
+      "egroup": "LONG",
+      "etitle": "ALeadTaux0.01(150)",
+      "edescr": "",
+      "min": 0,
+      "max": 500,
+      "default": 150,
+      "unit": 5
+    },
+    {
+      "group": "주행튜닝",
+      "name": "ALeadTauStart",
+      "title": "ALeadTauStartx0.01(50)",
+      "descr": "값이 작아지면 선행차 가속도에 민감해짐",
+      "egroup": "LONG",
+      "etitle": "ALeadTauStartx0.01(150)",
+      "edescr": "",
+      "min": 5,
+      "max": 80,
+      "default": 50,
+      "unit": 5
+    },
+    {
+      "group": "주행튜닝",
       "name": "LongitudinalTuningKpV",
       "title": "KpV게인(100)",
       "descr": "",
@@ -373,7 +399,7 @@
       "egroup": "CRUISE",
       "etitle": "GasCruiseON:Speed",
       "edescr": "",
-      "min": 20,
+      "min": 5,
       "max": 140,
       "default": 0,
       "unit": 5
@@ -392,11 +418,11 @@
       "unit": 1
     },
     {
-      "group": "크루즈",
+      "group": "시작",
       "name": "AutoCruiseControl",
       "title": "오토크루즈제어(HKG only)",
       "descr": "SOFTHOLD, Auto Cruise ON/OFF 제어",
-      "egroup": "CRUISE",
+      "egroup": "START",
       "etitle": "Auto Cruise control(HKG only)",
       "edescr": "Softhold, Auto Cruise ON/OFF control",
       "min": 0,
@@ -416,6 +442,19 @@
       "max": 1,
       "default": 0,
       "unit": 1
+    },
+    {
+      "group": "크루즈",
+      "name": "AutoSpeedUptoRoadSpeedLimit",
+      "title": "자동속도증가모드 (100)%",
+      "descr": "전방차량따라 로드스피드까지 자동속도올림.",
+      "egroup": "CRUISE",
+      "etitle": "AutoSyncSpeedMax:LeadCar(100)%",
+      "edescr": "",
+      "min": 0,
+      "max": 200,
+      "default": 100,
+      "unit": 10
     },
     {
       "group": "화면",
@@ -743,16 +782,42 @@
       "unit": 10
     },
     {
+      "group": "조향일반",
+      "name": "UseModelPath",
+      "title": "UseModelPath(0)",
+      "descr": "",
+      "egroup": "LAT",
+      "etitle": "UseModelPath",
+      "edescr": "",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "unit": 1
+    },
+    {
       "group": "시작",
       "name": "SoftHoldMode",
-      "title": "소프트오토홀드기능(1)",
+      "title": "소프트오토홀드기능(1),HKG",
       "descr": "0:사용안함,1:사용,2:SCC제어(오류발생시X)",
       "egroup": "START",
-      "etitle": "SoftAutoHoldFunction(1)",
+      "etitle": "SoftAutoHoldFunction(1),HKG",
       "edescr": "0:NotUsed,1:Use,2:SCC control",
       "min": 0,
       "max": 2,
       "default": 1,
+      "unit": 1
+    },
+    {
+      "group": "시작",
+      "name": "MixRadarInfo",
+      "title": "레이더시험",
+      "descr": "",
+      "egroup": "START",
+      "etitle": "Radar test",
+      "edescr": "",
+      "min": 0,
+      "max": 2,
+      "default": 0,
       "unit": 1
     },
     {
@@ -810,10 +875,10 @@
     {
       "group": "차량간격",
       "name": "TFollowSpeedAddM",
-      "title": "(x)TF(s): 차량간격시간 추가40km/hx0.01s(0)",
+      "title": "TF(s): 차량간격시간 추가40km/hx0.01s(0)",
       "descr": "속도(최대40km/h)에 따라 추가되는 값",
       "egroup": "FDIST",
-      "etitle": "(x)TF(s): Additinal TFs 40km/hx0.01s(0)",
+      "etitle": "TF(s): Additinal TFs 40km/hx0.01s(0)",
       "edescr": "Speed(max 40km/h) depenent Additinal TFollow(dTF)",
       "min": -100,
       "max": 200,
@@ -839,11 +904,24 @@
       "title": "정지유지브레이크-2.0x(50%)",
       "descr": "정지시 브레이크유지 조정",
       "egroup": "STOP",
-      "etitle": "DecelRate 2.0m/s^2 x (50%)",
+      "etitle": "Stopping Accel-2.0m/s^2 x (50%)",
       "edescr": "",
       "min": 0,
       "max": 100,
       "default": 50,
+      "unit": 10
+    },
+    {
+      "group": "정지",
+      "name": "StoppingAccel",
+      "title": "정지시작가속도x0.01(-80)",
+      "descr": "정지시작가속도 조정",
+      "egroup": "STOP",
+      "etitle": "StoppingStartAccelx0.01(-80)",
+      "edescr": "",
+      "min": -100,
+      "max": 0,
+      "default": -80,
       "unit": 10
     },
     {

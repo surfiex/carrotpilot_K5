@@ -112,8 +112,7 @@ class Controls:
     else:
       self.CI, self.CP, self.CS = CI, CI.CP, CI.CS
 
-    self.joystick_enabled = self.params.get_bool("JoystickDebugMode")
-    self.joystick_mode = self.joystick_enabled or self.CP.notCar
+    self.joystick_mode = self.params.get_bool("JoystickDebugMode")
 
     # set alternative experiences from parameters
     self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
@@ -223,15 +222,14 @@ class Controls:
         set_offroad_alert("Offroad_NoFirmware", True)
     elif self.CP.passive:
       self.events.add(EventName.dashcamMode, static=True)
-    elif self.joystick_mode:
-      self.events.add(EventName.joystickDebug, static=True)
-      self.startup_event = None
 
     # controlsd is driven by can recv, expected at 100Hz
     self.rk = Ratekeeper(100, print_delay_threshold=None)
     self.prof = Profiler(False)  # off by default
 
     self.update_frogpilot_params()
+
+    self.carrotCruiseActivate = 0 #carrot
 
   def set_initial_state(self):
     if REPLAY:
@@ -247,6 +245,11 @@ class Controls:
     """Compute onroadEvents from carState"""
 
     self.events.clear()
+
+    # Add joystick event, static on cars, dynamic on nonCars
+    if self.joystick_mode:
+      self.events.add(EventName.joystickDebug)
+      self.startup_event = None
 
     # Add startup event
     if self.startup_event is not None:
@@ -416,7 +419,7 @@ class Controls:
     else:
       self.logged_comm_issue = None
 
-    if not (self.CP.notCar and self.joystick_enabled):
+    if not (self.CP.notCar and self.joystick_mode):
       if not self.sm['lateralPlan'].mpcSolutionValid:
         self.events.add(EventName.plannerError)
       if not self.sm['liveLocationKalman'].posenetOK:
@@ -523,20 +526,27 @@ class Controls:
   def state_transition(self, CS):
     """Compute conditional state transitions and execute actions on state transitions"""
 
+    gear = car.CarState.GearShifter
+    drivingGear = CS.gearShifter not in (gear.neutral, gear.park, gear.reverse, gear.unknown)
+    self.can_enable = drivingGear and not self.events.contains(ET.NO_ENTRY)
+
     self.v_cruise_helper.update_v_cruise(CS, self.enabled, self.is_metric, self.reverse_cruise_increase, self)
 
-        #ajouatom
-    if not self.enabled and self.v_cruise_helper.cruiseActivate > 0 and not self.events.contains(ET.NO_ENTRY): #ajouatom
-      gear = car.CarState.GearShifter
-      drivingGear = CS.gearShifter not in (gear.neutral, gear.park, gear.reverse, gear.unknown)
-      if drivingGear:
+    #############################################################
+    if self.v_cruise_helper.cruiseActivate > 0:
+      print("[state_transition] cruiseActivate, noEntry=",self.events.contains(ET.NO_ENTRY), " self.enabled = ", self.enabled)
+    if not self.enabled and self.v_cruise_helper.cruiseActivate > 0: #ajouatom
+      if self.can_enable:
         self.events.add(EventName.buttonEnable)
         print("CruiseActivate: Button Enable")
+        self.carrotCruiseActivate = 1
       else:
         self.v_cruise_helper.cruiseActivate = 0
+        self.v_cruise_helper.softHoldActive = 0
     if self.enabled and self.v_cruise_helper.cruiseActivate < 0:
       self.events.add(EventName.buttonCancel)
       print("CruiseActivate: Button Cancel")
+      self.carrotCruiseActivate = -1
 
     # decrement the soft disable timer at every step, as it's reset on
     # entrance in SOFT_DISABLING state
@@ -619,6 +629,9 @@ class Controls:
     if self.active:
       self.current_alert_types.append(ET.WARNING)
 
+    if not self.enabled:
+      self.carrotCruiseActivate = 0
+
   def state_control(self, CS):
     """Given the state, this function returns a CarControl packet"""
 
@@ -646,7 +659,7 @@ class Controls:
     # Reset the Random Event flag
     if self.random_event_triggered:
       self.random_event_timer += 1
-      if self.random_event_timer >= 450:
+      if self.random_event_timer >= 400:
         self.random_event_triggered = False
         self.random_event_timer = 0
         self.params_memory.remove("CurrentRandomEvent")
@@ -694,16 +707,6 @@ class Controls:
       self.LoC.reset(v_pid=CS.vEgo)
 
     if not self.joystick_mode:
-
-      # SoftHold functions: for HKG only ## ajouatom
-      if self.FPCC.alwaysOnLateral and not self.events.contains(ET.NO_ENTRY):
-        if CS.vEgo > 0.5:  
-          self.v_cruise_helper.softHoldActive = 0
-      else:
-        self.v_cruise_helper.softHoldActive = 0
-        self.v_cruise_helper.cruiseActivate = 0
-      CC.hudControl.softHold = self.v_cruise_helper.softHoldActive
-
       # accel PID loop
       pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, CS.vEgo, self.v_cruise_helper.v_cruise_kph * CV.KPH_TO_MS)
       t_since_plan = (self.sm.frame - self.sm.rcv_frame['longitudinalPlan']) * DT_CTRL
@@ -758,13 +761,8 @@ class Controls:
         turning = abs(lac_log.desiredLateralAccel) > 1.0
         good_speed = CS.vEgo > 5
         max_torque = abs(self.last_actuators.steer) > 0.99
-        if undershooting and turning and good_speed and max_torque and not self.random_event_triggered:
-          if self.sm.frame % 10000 == 0:
-            lac_log.active and self.events.add(RandomEventName.firefoxSteerSaturated)
-            self.params_memory.put_int("CurrentRandomEvent", 1)
-            self.random_event_triggered = True
-          else:
-            lac_log.active and self.events.add(FrogPilotEventName.frogSteerSaturated if self.frog_sounds else EventName.steerSaturated)
+        if undershooting and turning and good_speed and max_torque:
+          lac_log.active and self.events.add(FrogPilotEventName.frogSteerSaturated if self.frog_sounds else EventName.steerSaturated)
       elif lac_log.saturated:
         dpath_points = lat_plan.dPathPoints
         if len(dpath_points):
@@ -827,9 +825,9 @@ class Controls:
     hudControl.objDist = int(lead_one.dRel) if lead_one.status else 0
     hudControl.objRelSpd = lead_one.vRel if lead_one.status else 0
 
-    CC.cruiseControl.activate = self.v_cruise_helper.cruiseActivate > 0 and not no_entry_events
-    
-
+    CC.cruiseControl.activate = self.carrotCruiseActivate > 0
+    CC.hudControl.softHold = self.v_cruise_helper.softHoldActive
+        
     hudControl.rightLaneVisible = CC.latActive
     hudControl.leftLaneVisible = CC.latActive
 
@@ -923,6 +921,9 @@ class Controls:
     controlsState.canErrorCounter = self.can_rcv_cum_timeout_counter
     controlsState.experimentalMode = self.experimental_mode
 
+    controlsState.debugText1 = self.v_cruise_helper.debugText
+    controlsState.debugText2 = ""
+
     lat_tuning = self.CP.lateralTuning.which()
     if self.joystick_mode:
       controlsState.lateralControlState.debugState = lac_log
@@ -983,6 +984,8 @@ class Controls:
         self.experimental_mode = self.sm['frogpilotLongitudinalPlan'].conditionalExperimental
       else:
         self.experimental_mode = self.params.get_bool("ExperimentalMode") or self.params_memory.get_bool("SLCExperimentalMode")
+    if self.CP.notCar:
+      self.joystick_mode = self.params.get_bool("JoystickDebugMode")
 
     # Sample data from sockets and get a carState
     CS = self.data_sample()

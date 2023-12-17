@@ -289,7 +289,7 @@ class LongitudinalMpc:
     self.xStopFilter = StreamingMovingAverage(3)
     self.xStopFilter2 = StreamingMovingAverage(15)
     self.vFilter = StreamingMovingAverage(10)
-    self.t_follow = get_T_FOLLOW()
+    self.t_follow_prev = get_T_FOLLOW()
     self.stop_distance = STOP_DISTANCE
     self.fakeCruiseDistance = 0.0
     self.comfort_brake = COMFORT_BRAKE
@@ -418,10 +418,21 @@ class LongitudinalMpc:
     self.cruise_min_a = min_a
     self.max_a = max_a
 
+  def update_tf(self, v_ego, t_follow):
+    t_follow = interp(v_ego * CV.MS_TO_KPH, [0, 40, 100], [t_follow, t_follow + self.tFollowSpeedAddM, t_follow + self.tFollowSpeedAdd]) 
+    #t_follow = interp(v_ego * CV.MS_TO_KPH, [0, 100], [t_follow, t_follow + self.tFollowSpeedAdd])
+    t_follow = max(0.6, t_follow * (2.0 - self.mySafeFactor)) 
+    if v_ego < self.v_ego_prev:
+      t_follow = max(t_follow, self.t_follow_prev)
+    self.t_follow_prev = t_follow
+    self.v_ego_prev = v_ego
+    return np.full(N+1, t_follow)
+
   def update(self, carstate, radarstate, model, v_cruise, x, v, a, j, have_lead, aggressive_acceleration, increased_stopping_distance, smoother_braking, custom_personalities, aggressive_follow, standard_follow, relaxed_follow, personality=log.LongitudinalPersonality.standard):
     #self.debugLongText = "v_cruise ={:.1f}".format(v_cruise)
     self.update_params()
     t_follow = get_T_FOLLOW(custom_personalities, aggressive_follow, standard_follow, relaxed_follow, personality)
+
     v_ego = self.x0[1]
     a_ego = self.x0[2]
     self.trafficState = TrafficState.off
@@ -434,7 +445,7 @@ class LongitudinalMpc:
     self.comfort_brake = COMFORT_BRAKE
     self.stop_distance = STOP_DISTANCE
     applyStopDistance = self.stop_distance  * (2.0 - self.mySafeFactor)
-    
+    t_follow = self.update_tf(v_ego, t_follow)
 
     # Offset by FrogAi for FrogPilot for a more natural takeoff with a lead
     if aggressive_acceleration:
@@ -444,16 +455,9 @@ class LongitudinalMpc:
 
     # Offset by FrogAi for FrogPilot for a more natural approach to a slower lead
     if smoother_braking:
-      distance_factor = np.maximum(1, lead_xv_0[:,0] - (lead_xv_0[:,1] * t_follow))
+      distance_factor = np.maximum(1, lead_xv_0[:,0] - (lead_xv_0[:,1] * t_follow)) 
       t_follow_offset = np.clip((v_ego - lead_xv_0[:,1]) - COMFORT_BRAKE, 1, distance_factor)
       t_follow = t_follow / t_follow_offset
-
-    if v_ego >= self.v_ego_prev:
-      #t_follow = interp(v_ego * CV.MS_TO_KPH, [0, 40, 100], [t_follow, t_follow + self.tFollowSpeedAddM, t_follow + self.tFollowSpeedAdd]) 
-      t_follow = interp(v_ego * CV.MS_TO_KPH, [0, 100], [t_follow, t_follow + self.tFollowSpeedAdd]) 
-      
-    self.t_follow = max(0.6, self.t_follow * (2.0 - self.mySafeFactor)) 
-    self.v_ego_prev = v_ego
 
     # LongitudinalPlan variables for onroad driving insights
     self.safe_obstacle_distance = float(np.mean(get_safe_obstacle_distance(v_ego, t_follow))) if have_lead else 0
@@ -473,6 +477,7 @@ class LongitudinalMpc:
 
     if not self.conditional_experimental_mode:
       v_cruise, stop_x, self.mode = self.update_apilot(carstate, radarstate, model, v_cruise)
+      self.debugLongText = "XState({}),tf={:.2f},tf_d={:.1f},stop_x={:.1f},stopDist={:.1f},Traffic={}".format(str(self.xState), t_follow[0], t_follow[0]*v_ego+6.0, stop_x, self.stopDist, str(self.trafficState))
     else:
       stop_x = 1000.0
       self.xState = XState.e2eCruise
@@ -677,6 +682,7 @@ class LongitudinalMpc:
             self.stopDist = stop_dist
           stop_x = 0
           self.fakeCruiseDistance = 0 if self.stopDist > 10.0 else 10.0
+          v_cruise = 0 if v_ego < 0.1 else v_cruise
     elif self.xState == XState.e2ePrepare:
       if self.status:
         self.xState = XState.lead
@@ -710,7 +716,7 @@ class LongitudinalMpc:
       stop_dist = v_ego ** 2 / (2.5 * 2)
       self.stopDist = self.stopDist if self.stopDist > stop_dist else stop_dist
       stop_x = 0.0
-    self.debugLongText = "XState({}),stop_x={:.1f},stopDist={:.1f},Traffic={}".format(str(self.xState), stop_x, self.stopDist, str(self.trafficState))
+    #self.debugLongText = "XState({}),stop_x={:.1f},stopDist={:.1f},Traffic={}".format(str(self.xState), stop_x, self.stopDist, str(self.trafficState))
     #번호를 읽을때는 self.xState.value
     return v_cruise, stop_x + self.stopDist, mode
 

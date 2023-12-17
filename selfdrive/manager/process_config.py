@@ -49,6 +49,7 @@ def only_offroad(started, params, CP: car.CarParams) -> bool:
 def allow_uploads(started, params, CP: car.CarParams) -> bool:
   enable_logging = not params_memory.get_bool("NoLogging")
   wifi_connected = HARDWARE.get_network_type() == WIFI and not started
+  return False
   return wifi_connected if params_memory.get_bool("DisableOnroadUploads") else enable_logging
 
 def enable_dm(started, params, CP: car.CarParams) -> bool:
@@ -74,6 +75,7 @@ procs = [
   PythonProcess("timezoned", "system.timezoned", always_run, enabled=not PC),
 
   PythonProcess("dmonitoringmodeld", "selfdrive.modeld.dmonitoringmodeld", enable_dm, enabled=(not PC or WEBCAM)),
+  PythonProcess("carrotmodeld", "selfdrive.modeld.carrot.carrotmodeld", only_onroad),
   NativeProcess("encoderd", "system/loggerd", ["./encoderd"], only_onroad),
   NativeProcess("stream_encoderd", "system/loggerd", ["./encoderd", "--stream"], notcar),
   NativeProcess("loggerd", "system/loggerd", ["./loggerd"], (enable_logging and logging)),
@@ -112,7 +114,6 @@ procs = [
   # FrogPilot processes
   PythonProcess("fleet_manager", "selfdrive.frogpilot.fleetmanager.fleet_manager", always_run),
   PythonProcess("mapd", "selfdrive.frogpilot.functions.mapd", osm),
-  PythonProcess("otisserv", "selfdrive.frogpilot.navigation.otisserv.otisserv", always_run),
 ]
 
 managed_processes = {p.name: p for p in procs}

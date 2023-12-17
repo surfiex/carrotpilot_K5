@@ -698,6 +698,8 @@ struct ControlsState @0x97ff69c53601abf1 {
     lqrStateDEPRECATED @55 :LateralLQRState;
   }
 
+  debugText1 @66 : Text;
+  debugText2 @67 : Text;
   enum OpenpilotState @0xdbe58b96d2d1ac61 {
     disabled @0;
     preEnabled @1;

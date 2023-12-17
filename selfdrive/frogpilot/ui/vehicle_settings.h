@@ -3,6 +3,7 @@
 #include <QStringList>
 
 #include "selfdrive/ui/qt/offroad/settings.h"
+#include "selfdrive/ui/ui.h"
 
 class FrogPilotVehiclesPanel : public ListWidget {
   Q_OBJECT
@@ -17,16 +18,12 @@ private:
   ButtonControl *selectMakeButton;
   ButtonControl *selectModelButton;
 
-  ToggleControl *lockDoorsToggle=0;
-  ToggleControl *sngHackToggle=0;
-  ToggleControl *tss2TuneToggle=0;
-
-  ToggleControl *evTableToggle=0;
-  ToggleControl *longPitchToggle=0;
-  ToggleControl *lowerVoltToggle=0;
+  QLabel *noToggles;
 
   QString brandSelection;
   QStringList models;
+
+  std::map<std::string, ParamControl*> toggles;
 
   Params params;
   Params paramsMemory{"/dev/shm/params"};

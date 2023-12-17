@@ -8,16 +8,15 @@ from typing import Dict, Optional, Tuple
 from cereal import car, messaging
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.filter_simple import FirstOrderFilter
-
-from openpilot.system import micd
-from openpilot.system.hardware import TICI
-
-from openpilot.common.realtime import Ratekeeper
-from openpilot.system.hardware import PC
 from openpilot.common.params import Params
+from openpilot.common.realtime import Ratekeeper
+from openpilot.common.retry import retry
 from openpilot.common.swaglog import cloudlog
 
+from openpilot.system import micd
+
 SAMPLE_RATE = 48000
+SAMPLE_BUFFER = 4096 # (approx 100ms)
 MAX_VOLUME = 1.0
 MIN_VOLUME = 0.1
 CONTROLS_TIMEOUT = 5 # 5 seconds
@@ -31,8 +30,8 @@ AudibleAlert = car.CarControl.HUDControl.AudibleAlert
 
 sound_list: Dict[int, Tuple[str, Optional[int], float]] = {
   # AudibleAlert, file name, play count (none for infinite)
-  AudibleAlert.engage: ("engage.wav", 1, MAX_VOLUME),
-  AudibleAlert.disengage: ("disengage.wav", 1, MAX_VOLUME),
+  AudibleAlert.engage: ("engage.wav", 1, 0.3),
+  AudibleAlert.disengage: ("disengage.wav", 1, 0.3),
   AudibleAlert.refuse: ("refuse.wav", 1, MAX_VOLUME),
 
   AudibleAlert.prompt: ("prompt.wav", 1, MAX_VOLUME),
@@ -128,9 +127,9 @@ class Soundd:
       actual_sample_rate = wavefile.getframerate()
 
       nchannels = wavefile.getnchannels()
-      print("nchannels=", nchannels, ",sound=", sound_list[sound])
+      #print("nchannels=", nchannels, ",sound=", sound_list[sound])
       assert nchannels in [1,2]
-      print("loading...")
+      #print("loading...")
 
       length = wavefile.getnframes()
       frames = wavefile.readframes(length)
@@ -139,7 +138,7 @@ class Soundd:
       if nchannels == 2:
         samples = samples[0::2] / 2 + samples[1::2] / 2
 
-      resampled_samples = linear_resample(samples, actual_sample_rate, SAMPLE_RATE)
+      resampled_samples = linear_resample(samples, actual_sample_rate, SAMPLE_RATE) * volume
 
       self.loaded_sounds[sound] = resampled_samples.astype(np.float32) / (2**16/2)
 
@@ -190,18 +189,23 @@ class Soundd:
     volume = ((weighted_db - AMBIENT_DB) / DB_SCALE) * (MAX_VOLUME - MIN_VOLUME) + MIN_VOLUME
     return math.pow(10, (np.clip(volume, MIN_VOLUME, MAX_VOLUME) - 1))
 
+  @retry(attempts=7, delay=3)
+  def get_stream(self, sd):
+    # reload sounddevice to reinitialize portaudio
+    sd._terminate()
+    sd._initialize()
+    return sd.OutputStream(channels=1, samplerate=SAMPLE_RATE, callback=self.callback, blocksize=SAMPLE_BUFFER)
+
   def soundd_thread(self):
     # sounddevice must be imported after forking processes
     import sounddevice as sd
 
-    if TICI:
-      micd.wait_for_devices(sd) # wait for alsa to be initialized on device
+    sm = messaging.SubMaster(['controlsState', 'microphone'])
 
-    with sd.OutputStream(channels=1, samplerate=SAMPLE_RATE, callback=self.callback) as stream:
+    with self.get_stream(sd) as stream:
       rk = Ratekeeper(20)
-      sm = messaging.SubMaster(['controlsState', 'microphone'])
 
-      cloudlog.info(f"soundd stream started: {stream.samplerate=} {stream.channels=} {stream.dtype=} {stream.device=}")
+      cloudlog.info(f"soundd stream started: {stream.samplerate=} {stream.channels=} {stream.dtype=} {stream.device=}, {stream.blocksize=}")
       while True:
         sm.update(0)
 
