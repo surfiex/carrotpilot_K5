@@ -30,8 +30,8 @@ AudibleAlert = car.CarControl.HUDControl.AudibleAlert
 
 sound_list: Dict[int, Tuple[str, Optional[int], float]] = {
   # AudibleAlert, file name, play count (none for infinite)
-  AudibleAlert.engage: ("engage.wav", 1, 0.3),
-  AudibleAlert.disengage: ("disengage.wav", 1, 0.3),
+  AudibleAlert.engage: ("engage.wav", 1, 0.2),
+  AudibleAlert.disengage: ("disengage.wav", 1, 0.2),
   AudibleAlert.refuse: ("refuse.wav", 1, MAX_VOLUME),
 
   AudibleAlert.prompt: ("prompt.wav", 1, MAX_VOLUME),
@@ -40,7 +40,6 @@ sound_list: Dict[int, Tuple[str, Optional[int], float]] = {
 
   AudibleAlert.warningSoft: ("warning_soft.wav", None, MAX_VOLUME),
   AudibleAlert.warningImmediate: ("warning_immediate.wav", None, MAX_VOLUME),
-  AudibleAlert.firefox: ("firefox.wav", None, MAX_VOLUME),
   AudibleAlert.longEngaged: ("tici_engaged.wav", None, MAX_VOLUME),
   AudibleAlert.longDisengaged: ("tici_disengaged.wav", None, MAX_VOLUME),
   AudibleAlert.trafficSignGreen: ("traffic_sign_green.wav", None, MAX_VOLUME),
