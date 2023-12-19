@@ -214,15 +214,10 @@ class LateralPlanner:
       #if self.DH.desire == log.LateralPlan.Desire.laneChangeRight or self.DH.desire == log.LateralPlan.Desire.laneChangeLeft:
       if self.DH.desire != log.LateralPlan.Desire.none:
         self.LP.lane_change_multiplier = self.DH.lane_change_ll_prob
-        self.lanelines_active = False
       else:
         self.LP.lane_change_multiplier = 1.0
-        self.lanelines_active = True
     else:
       self.LP.lane_change_multiplier = 0.0
-      self.lanelines_active = False
-
-    self.lanelines_active = True if self.LP.lane_change_multiplier > 0.01 else False
 
     # lanelines calculation?
     self.LP.lane_width_left = self.DH.lane_width_left
@@ -230,6 +225,7 @@ class LateralPlanner:
     self.LP.curvature = measured_curvature
     self.path_xyz = self.LP.get_d_path(sm['carState'], self.v_ego, self.t_idxs, self.path_xyz, self.vcurv)
     self.latDebugText = self.LP.debugText
+    self.lanelines_active = True if self.LP.d_prob > 0.3 else False
 
     self.path_xyz[:, 1] += self.pathOffset
 
