@@ -347,7 +347,7 @@ class LanePlanner:
 
     self.adjustLaneOffset = float(Params().get_int("AdjustLaneOffset")) * 0.01
     self.adjustCurveOffset = float(Params().get_int("AdjustCurveOffset")) * 0.01
-    ADJUST_OFFSET_LIMIT = max(self.adjustLaneOffset, self.adjustCurveOffset)
+    ADJUST_OFFSET_LIMIT = 0.4 #max(self.adjustLaneOffset, self.adjustCurveOffset)
     offset_curve = 0.0
     offset_lane = 0.0
     #curvature = self.curvature * 100.0
@@ -373,7 +373,11 @@ class LanePlanner:
     #lane_path_y = (l_prob * path_from_left_lane + r_prob * path_from_right_lane) / (l_prob + r_prob + 0.0001)
 
     # offset_center = lane_line_center - laneless_center
-    diff_center = lane_path_y[5] - path_xyz[:,1][5] if not self.lanefull_mode else 0.0
+    
+    lane_path_y_center = interp(0.5, path_t, lane_path_y)
+    path_xyz_y_center = interp(0.5, path_t, path_xyz[:,1])
+    diff_center = lane_path_y_center - path_xyz_y_center if not self.lanefull_mode else 0.0
+    #diff_center = lane_path_y[5] - path_xyz[:,1][5] if not self.lanefull_mode else 0.0
     offset_total = clip(offset_curve + offset_lane + diff_center, - ADJUST_OFFSET_LIMIT, ADJUST_OFFSET_LIMIT)
 
     ## self.d_prob = 0 if lane_changing
