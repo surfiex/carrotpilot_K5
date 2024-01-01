@@ -1077,6 +1077,7 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
     float cur_speed = getVEgo() * (s->scene.is_metric ? MS_TO_KPH : MS_TO_MPH);
     if (cur_speed < 0.0) cur_speed = 0.0;
     auto controls_state = sm["controlsState"].getControlsState();
+    auto carstate = sm["carState"].getCarState();
     const auto road_limit_speed = sm["roadLimitSpeed"].getRoadLimitSpeed();
     //const auto car_params = sm["carParams"].getCarParams();
     if (s->show_mode == 3) {
@@ -1107,7 +1108,7 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
         float curveSpeed = 0;//HW: controls_state.getCurveSpeed();
         //cruiseAdjustment = 0.1 * s->scene.cruiseAdjustment * (s->scene.is_metric ? MS_TO_KPH : MS_TO_MPH) + 0.9 * cruiseAdjustment;
         //cruiseAdjustment = fmax((0.1 * fmax(setSpeed - scene.adjusted_cruise - setSpeed, 0) * (is_metric ? MS_TO_KPH : MS_TO_MPH) + 0.9 * cruiseAdjustment) - 1, 0);
-        cruiseAdjustment = s->scene.adjusted_cruise * (s->scene.is_metric ? MS_TO_KPH : MS_TO_MPH) * 0.1 + cruiseAdjustment * 0.9;
+        cruiseAdjustment = s->scene.adjusted_cruise * (float)carstate.getVCluRatio() * (s->scene.is_metric ? MS_TO_KPH : MS_TO_MPH) * 0.1 + cruiseAdjustment * 0.9;
         bool speedCtrlActive = false;
         //if (curveSpeed < 0) {
         //    speedCtrlActive = true;
@@ -1159,23 +1160,25 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
         xDistToTurn = 120;
 #endif
 
-        auto navInstruction = sm["navInstruction"].getNavInstruction();
-        float navDistance = navInstruction.getManeuverDistance();
-        //float distance_remaining = navInstruction.getDistanceRemaining();
-        QString navType = QString::fromStdString(navInstruction.getManeuverType());
-        QString navModifier = QString::fromStdString(navInstruction.getManeuverModifier());
-        //navText = QString::fromStdString(navInstruction.getManeuverSecondaryText());
+        if (xTurnInfo < 0 && xDistToTurn <= 0) {
+            auto navInstruction = sm["navInstruction"].getNavInstruction();
+            float navDistance = navInstruction.getManeuverDistance();
+            //float distance_remaining = navInstruction.getDistanceRemaining();
+            QString navType = QString::fromStdString(navInstruction.getManeuverType());
+            QString navModifier = QString::fromStdString(navInstruction.getManeuverModifier());
+            //navText = QString::fromStdString(navInstruction.getManeuverSecondaryText());
 
-        if (navType == "turn") {
-            if (navModifier == "sharp left" || navModifier == "slight left" || navModifier == "left") xTurnInfo = 1; // left turn
-            else if (navModifier == "sharp right" || navModifier == "slight right" || navModifier == "right") xTurnInfo = 2;
-            else if (navModifier == "uturn") xTurnInfo = 5;
-            xDistToTurn = navDistance;
-        }
-        else if (navType == "fork" || navType == "off ramp") {
-            if (navModifier == "slight left" || navModifier == "left") xTurnInfo = 3; // left turn
-            else if (navModifier == "slight right" || navModifier == "right") xTurnInfo = 4;
-            xDistToTurn = navDistance;
+            if (navType == "turn") {
+                if (navModifier == "sharp left" || navModifier == "slight left" || navModifier == "left") xTurnInfo = 1; // left turn
+                else if (navModifier == "sharp right" || navModifier == "slight right" || navModifier == "right") xTurnInfo = 2;
+                else if (navModifier == "uturn") xTurnInfo = 5;
+                xDistToTurn = navDistance;
+            }
+            else if (navType == "fork" || navType == "off ramp") {
+                if (navModifier == "slight left" || navModifier == "left") xTurnInfo = 3; // left turn
+                else if (navModifier == "slight right" || navModifier == "right") xTurnInfo = 4;
+                xDistToTurn = navDistance;
+            }
         }
         if (limit_speed > 0);
         else if (xSpdLimit > 0 && xSpdDist > 0) {
@@ -1325,8 +1328,9 @@ void DrawApilot::drawTurnInfo(const UIState* s, int x, int y) {
         desireStateLaneChangeRight = meta.getDesireState()[4];
     }
     auto car_state = sm["carState"].getCarState();
-    bool leftBlinker = car_state.getLeftBlinker();
-    bool rightBlinker = car_state.getRightBlinker();
+    auto controls_state = sm["controlsState"].getControlsState();
+    bool leftBlinker = car_state.getLeftBlinker() || controls_state.getLeftBlinkerExt();
+    bool rightBlinker = car_state.getRightBlinker() || controls_state.getRightBlinkerExt();
     bool bsd_l = car_state.getLeftBlindspot();
     bool bsd_r = car_state.getRightBlindspot();
 
@@ -1712,11 +1716,11 @@ void DrawApilot::drawLeadApilot(const UIState* s) {
 
 #ifndef __TEST
     if (!sm.alive("controlsState") || !sm.alive("radarState") || !sm.alive("carControl")) {
-        printf("not ready....\n");
+        //printf("not ready....\n");
         return;
     }
     if (!sm.alive("lateralPlan") || !sm.alive("longitudinalPlan") || !sm.alive("liveParameters") || !sm.alive("roadLimitSpeed") || !sm.alive("liveTorqueParameters")) {
-        printf("not ready 2....\n");
+        //printf("not ready 2....\n");
         return;
     }
 #endif
@@ -1837,7 +1841,7 @@ void DrawApilot::drawDebugText(UIState* s, bool show) {
 
     nvgTextAlign(s->vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
-    int y = 350, dy = 40;
+    int y = 450, dy = 40;
 
     const int text_x = s->fb_w - 220;
     const auto live_torque_params = sm["liveTorqueParameters"].getLiveTorqueParameters();

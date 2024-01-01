@@ -107,7 +107,7 @@ class LateralPlanner:
       self.l_lane_change_prob = desire_state[log.LateralPlan.Desire.laneChangeLeft]
       self.r_lane_change_prob = desire_state[log.LateralPlan.Desire.laneChangeRight]
     lane_change_prob = self.l_lane_change_prob + self.r_lane_change_prob
-    self.DH.update(sm['carState'], md, sm['carControl'].latActive, lane_change_prob)
+    self.DH.update(sm['carState'], md, sm['carControl'].latActive, lane_change_prob, sm['controlsState'].leftBlinkerExt, sm['controlsState'].rightBlinkerExt)
 
   def publish(self, sm, pm):
     if self.useLaneLineSpeed > 0:
@@ -148,6 +148,8 @@ class LateralPlanner:
 
     frogpilotLateralPlan.laneWidthLeft = float(self.DH.lane_width_left)
     frogpilotLateralPlan.laneWidthRight = float(self.DH.lane_width_right)
+    frogpilotLateralPlan.distanceToRoadEdgeLeft = float(self.DH.distance_to_road_edge_left)
+    frogpilotLateralPlan.distanceToRoadEdgeRight = float(self.DH.distance_to_road_edge_right)
 
     pm.send('frogpilotLateralPlan', frogpilot_plan_send)
 
@@ -179,7 +181,7 @@ class LateralPlanner:
     # Parse model predictions
     self.LP.parse_model(md)
     lane_change_prob = self.LP.l_lane_change_prob + self.LP.r_lane_change_prob
-    self.DH.update(sm['carState'], md, sm['carControl'].latActive, lane_change_prob)
+    self.DH.update(sm['carState'], md, sm['carControl'].latActive, lane_change_prob, sm['controlsState'].leftBlinkerExt, sm['controlsState'].rightBlinkerExt)
 
     if self.v_ego*3.6 >= self.useLaneLineSpeed + 2:
       self.useLaneLineMode = True
