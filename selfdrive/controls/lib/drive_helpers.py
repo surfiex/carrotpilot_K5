@@ -52,10 +52,12 @@ CRUISE_INTERVAL_SIGN = {
 
 
 class VCruiseHelper:
-  def __init__(self, CP):
+  def __init__(self, CP, is_metric):
     self.CP = CP
     self.v_cruise_kph = V_CRUISE_INITIAL #V_CRUISE_UNSET
     self.v_cruise_cluster_kph = V_CRUISE_INITIAL #V_CRUISE_UNSET
+    self.v_cruise_offset = 3 # adjustable offset
+    self.v_cruise_offset = int(round(self.v_cruise_offset * (1 if is_metric else CV.MPH_TO_KPH)))
     self.v_cruise_kph_last = 0
     self.button_timers = {ButtonType.decelCruise: 0, ButtonType.accelCruise: 0}
     self.button_change_states = {btn: {"standstill": False, "enabled": False} for btn in self.button_timers}
@@ -87,6 +89,7 @@ class VCruiseHelper:
     self.debugText2 = ""
     self._first = True
     self.activeAPM = 0
+    self.blinkerExtMode = 0 # 0: Normal, 10000: voice
     self.rightBlinkerExtCount = 0
     self.leftBlinkerExtCount = 0
     self.naviDistance = 0
@@ -221,6 +224,12 @@ class VCruiseHelper:
       self.v_cruise_kph = CRUISE_NEAREST_FUNC[button_type](self.v_cruise_kph / v_cruise_delta) * v_cruise_delta
     else:
       self.v_cruise_kph += v_cruise_delta * CRUISE_INTERVAL_SIGN[button_type]
+    
+    # Apply offset 
+    v_cruise_offset = (self.v_cruise_offset * CRUISE_INTERVAL_SIGN[button_type]) if long_press else 0
+    if v_cruise_offset < 0:
+      v_cruise_offset = self.v_cruise_offset - v_cruise_delta
+    self.v_cruise_kph += v_cruise_offset
 
     # If set is pressed while overriding, clip cruise speed to minimum of vEgo
     if CS.gasPressed and button_type in (ButtonType.decelCruise, ButtonType.setCruise):
@@ -288,6 +297,12 @@ class VCruiseHelper:
       self.lead_vRel = 0
 
   def _update_v_cruise_apilot(self, CS, controls):
+
+    self.rightBlinkerExtCount = max(self.rightBlinkerExtCount - 1, 0)
+    self.leftBlinkerExtCount = max(self.leftBlinkerExtCount - 1, 0)
+    if self.rightBlinkerExtCount + self.leftBlinkerExtCount <= 0:
+      self.blinkerExtMode = 0
+
     self._update_lead(controls)
     self.v_ego_kph_set = int(CS.vEgoCluster * CV.MS_TO_KPH + 0.5)
     if self.v_cruise_kph_set > 200:
@@ -378,9 +393,6 @@ class VCruiseHelper:
 
       elif msg.xCmd == "DETECT":
         self.debugText2 = "DETECT[{}]={}".format(msg.xIndex, msg.xArg)
-    else:
-      self.rightBlinkerExtCount = max(self.rightBlinkerExtCount - 1, 0)
-      self.leftBlinkerExtCount = max(self.leftBlinkerExtCount - 1, 0)
     return v_cruise_kph
 
   def _add_log(self, log):
@@ -765,8 +777,10 @@ class VCruiseHelper:
       blinkerExtState = self.rightBlinkerExtCount + self.rightBlinkerExtCount
       if nav_direction == 1 and nav_turn: # 왼쪽차선변경은 위험하니 턴인경우만 하자, 하지만 지금은 안함.
         self.leftBlinkerExtCount = 10
+        self.blinkerExtMode = 20000 if nav_turn else 10000
       elif nav_direction == 2:
         self.rightBlinkerExtCount = 10
+        self.blinkerExtMode = 20000 if nav_turn else 10000
 
       if blinkerExtState <= 0 and self.rightBlinkerExtCount + self.rightBlinkerExtCount > 0:
         self._make_event(controls, EventName.audioTurn if nav_turn else EventName.audioLaneChange)

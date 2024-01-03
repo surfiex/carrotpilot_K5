@@ -200,7 +200,7 @@ class Controls:
     self.desired_curvature = 0.0
     self.desired_curvature_rate = 0.0
     self.experimental_mode = False
-    self.v_cruise_helper = VCruiseHelper(self.CP)
+    self.v_cruise_helper = VCruiseHelper(self.CP, self.is_metric)
     self.recalibrating_seen = False
     self.nn_alert_shown = False
 
@@ -914,8 +914,8 @@ class Controls:
     controlsState.debugText1 = self.v_cruise_helper.debugText
     controlsState.debugText2 = self.v_cruise_helper.debugText2
 
-    controlsState.leftBlinkerExt = self.v_cruise_helper.leftBlinkerExtCount > 0
-    controlsState.rightBlinkerExt = self.v_cruise_helper.rightBlinkerExtCount > 0
+    controlsState.leftBlinkerExt = self.v_cruise_helper.leftBlinkerExtCount + self.v_cruise_helper.blinkerExtMode
+    controlsState.rightBlinkerExt = self.v_cruise_helper.rightBlinkerExtCount  + self.v_cruise_helper.blinkerExtMode
 
     lat_tuning = self.CP.lateralTuning.which()
     if self.joystick_mode:
