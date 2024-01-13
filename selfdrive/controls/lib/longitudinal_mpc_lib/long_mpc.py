@@ -82,7 +82,7 @@ class TrafficState(Enum):
   def __str__(self):
     return self.name
 
-def get_jerk_factor(custom_personalities, aggressive_jerk, standard_jerk, relaxed_jerk, personality=log.LongitudinalPersonality.standard):
+def get_jerk_factor(custom_personalities=False, aggressive_jerk=0.5, standard_jerk=1.0, relaxed_jerk=1.0, personality=log.LongitudinalPersonality.standard):
   if custom_personalities:
     if personality==log.LongitudinalPersonality.relaxed:
       return relaxed_jerk
