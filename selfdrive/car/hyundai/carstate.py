@@ -183,19 +183,13 @@ class CarState(CarStateBase):
 
       ret.gearShifter = self.gear_shifter
 
-    if not self.CP.openpilotLongitudinalControl:
+    if not self.CP.openpilotLongitudinalControl or self.CP.flags & HyundaiFlags.SCC_BUS2.value:
       aeb_src = "FCA11" if self.CP.flags & HyundaiFlags.USE_FCA.value else "SCC12"
       aeb_sig = "FCA_CmdAct" if self.CP.flags & HyundaiFlags.USE_FCA.value else "AEB_CmdAct"
       aeb_warning = cp_cruise.vl[aeb_src]["CF_VSM_Warn"] != 0
+      scc_warning = cp_cruise.vl["SCC12"]["TakeOverReq"] == 1  # sometimes only SCC system shows an FCW
       aeb_braking = cp_cruise.vl[aeb_src]["CF_VSM_DecCmdAct"] != 0 or cp_cruise.vl[aeb_src][aeb_sig] != 0
-      ret.stockFcw = aeb_warning and not aeb_braking
-      ret.stockAeb = aeb_warning and aeb_braking
-    elif self.CP.flags & HyundaiFlags.SCC_BUS2.value:
-      aeb_src = "FCA11" if self.CP.flags & HyundaiFlags.USE_FCA.value else "SCC12"
-      aeb_sig = "FCA_CmdAct" if self.CP.flags & HyundaiFlags.USE_FCA.value else "AEB_CmdAct"
-      aeb_warning = cp_cruise.vl[aeb_src]["CF_VSM_Warn"] != 0
-      aeb_braking = cp_cruise.vl[aeb_src]["CF_VSM_DecCmdAct"] != 0 or cp_cruise.vl[aeb_src][aeb_sig] != 0
-      ret.stockFcw = aeb_warning and not aeb_braking
+      ret.stockFcw = (aeb_warning or scc_warning) and not aeb_braking
       ret.stockAeb = aeb_warning and aeb_braking
 
     if self.CP.enableBsm:
@@ -274,7 +268,7 @@ class CarState(CarStateBase):
           self.param_memory.put_bool("PersonalityChangedViaWheel", True)
           self.previous_personality_profile = self.personality_profile
     # Toggle Experimental Mode from steering wheel function
-    if self.experimental_mode_via_press and ret.cruiseState.available and self.CP.flags & HyundaiFlags.HAS_LFA_BUTTON.value:
+    if ret.cruiseState.available and self.CP.flags & HyundaiFlags.HAS_LFA_BUTTON.value:
       lkas_pressed = cp.vl["BCM_PO_11"]["LFA_Pressed"]
       self.lkas_pressed_count = self.lkas_pressed_count + 1 if lkas_pressed else 0
       if self.lkas_pressed_count >= 70:

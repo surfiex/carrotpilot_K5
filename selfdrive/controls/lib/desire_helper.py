@@ -3,6 +3,8 @@ from openpilot.common.conversions import Conversions as CV
 from openpilot.common.realtime import DT_MDL
 import numpy as np
 
+#from openpilot.selfdrive.frogpilot.functions.frogpilot_planner import calculate_lane_width
+
 LaneChangeState = log.LateralPlan.LaneChangeState
 LaneChangeDirection = log.LateralPlan.LaneChangeDirection
 TurnDirection = log.LateralPlan.Desire
@@ -37,6 +39,19 @@ TURN_DESIRES = {
   TurnDirection.turnRight: log.LateralPlan.Desire.turnRight,
 }
 
+def calculate_lane_width(lane, current_lane, road_edge):
+  lane_x, lane_y = np.array(lane.x), np.array(lane.y)
+  edge_x, edge_y = np.array(road_edge.x), np.array(road_edge.y)
+  current_x, current_y = np.array(current_lane.x), np.array(current_lane.y)
+
+  lane_y_interp = np.interp(current_x, lane_x[lane_x.argsort()], lane_y[lane_x.argsort()])
+  road_edge_y_interp = np.interp(current_x, edge_x[edge_x.argsort()], edge_y[edge_x.argsort()])
+
+  distance_to_lane = np.mean(np.abs(current_y - lane_y_interp))
+  distance_to_road_edge = np.mean(np.abs(current_y - road_edge_y_interp))
+
+  return min(distance_to_lane, distance_to_road_edge), distance_to_road_edge
+
 
 class DesireHelper:
   def __init__(self):
@@ -50,32 +65,31 @@ class DesireHelper:
 
     # FrogPilot variables
     self.turn_direction = TurnDirection.none
+
     self.lane_change_completed = False
     self.turn_completed = False
+
+    self.lane_change_wait_timer = 0
+    self.lane_width_left = 0
+    self.lane_width_right = 0
+
     self.lane_change_wait_timer = 0
 
     self.lane_available_prev = False
 
-  # Lane detection
-  def calculate_lane_width(self, lane, current_lane, road_edge):
-    # Interpolate lane values at current_lane.x positions
-    lane_x, lane_y = np.array(lane.x), np.array(lane.y)
-    edge_x, edge_y = np.array(road_edge.x), np.array(road_edge.y)
-    current_x, current_y = np.array(current_lane.x), np.array(current_lane.y)
 
-    # Interpolate lane and road edge values at current_lane.x positions
-    lane_y_interp = np.interp(current_x, lane_x[lane_x.argsort()], lane_y[lane_x.argsort()])
-    road_edge_y_interp = np.interp(current_x, edge_x[edge_x.argsort()], edge_y[edge_x.argsort()])
+  def update(self, carstate, modeldata, lateral_active, lane_change_prob, frogpilot_planner, sm):
 
-    # Calculate the mean absolute distances
-    distance_to_lane = np.mean(np.abs(current_y - lane_y_interp))
-    distance_to_road_edge = np.mean(np.abs(current_y - road_edge_y_interp))
-
-    # Return the smallest between the two
-    return min(distance_to_lane, distance_to_road_edge), distance_to_road_edge
-
-  def update(self, carstate, modeldata, lateral_active, lane_change_prob, leftBlinkerExt, rightBlinkerExt):
-    blinkerExtMode = int((leftBlinkerExt + rightBlinkerExt) / 10000)
+    radarState = sm['radarState']
+    self.leftSideObjectDist = 255
+    self.rightSideObjectDist = 255
+    if radarState.leadLeft.status:
+      self.leftSideObjectDist = radarState.leadLeft.dRel
+    if radarState.leadRight.status:
+      self.rightSideObjectDist = radarState.leadRight.dRel
+    leftBlinkerExt = sm['controlsState'].leftBlinkerExt
+    rightBlinkerExt = sm['controlsState'].rightBlinkerExt
+    blinkerExtMode = int((leftBlinkerExt + rightBlinkerExt) / 20000)  ## 둘다 10000 or 20000이 + 되어 있으므로,, 10000이 아니라 20000으로 나누어야함.
     leftBlinkerExt %= 10000
     rightBlinkerExt %= 10000
 
@@ -83,7 +97,7 @@ class DesireHelper:
     leftBlinker = carstate.leftBlinker or leftBlinkerExt > 0
     rightBlinker = carstate.rightBlinker or rightBlinkerExt > 0
     one_blinker = leftBlinker != rightBlinker
-    below_lane_change_speed = v_ego < LANE_CHANGE_SPEED_MIN
+    below_lane_change_speed = v_ego < LANE_CHANGE_SPEED_MIN if blinkerExtMode in [0,2] else v_ego < 5. * CV.KPH_TO_MS  ## carrot, when auto turn...
 
     # Calculate left and right lane widths for the blindspot path
     self.lane_width_left = 0
@@ -91,30 +105,30 @@ class DesireHelper:
     self.distance_to_road_edge_left = 0
     self.distance_to_road_edge_right = 0
     turning = abs(carstate.steeringAngleDeg) >= 60
-    if True: #carrot: 항상계산.. self.blindspot_path and not below_lane_change_speed and not turning:
+    if True: #carrot: 항상계산.. frogpilot_planner.blindspot_path and not below_lane_change_speed and not turning:
       # Calculate left and right lane widths
-      self.lane_width_left, self.distance_to_road_edge_left = self.calculate_lane_width(modeldata.laneLines[0], modeldata.laneLines[1], modeldata.roadEdges[0])
-      self.lane_width_right, self.distance_to_road_edge_right = self.calculate_lane_width(modeldata.laneLines[3], modeldata.laneLines[2], modeldata.roadEdges[1])
+      self.lane_width_left, self.distance_to_road_edge_left = calculate_lane_width(modeldata.laneLines[0], modeldata.laneLines[1], modeldata.roadEdges[0])
+      self.lane_width_right, self.distance_to_road_edge_right = calculate_lane_width(modeldata.laneLines[3], modeldata.laneLines[2], modeldata.roadEdges[1])
 
     # Calculate the desired lane width for nudgeless lane change with lane detection
-    if not (self.lane_detection and one_blinker) or below_lane_change_speed or turning:
+    if not (frogpilot_planner.lane_detection and one_blinker) or below_lane_change_speed or turning:
       lane_available = True
     else:
       # Set the minimum lane threshold to 2.8 meters
-      min_lane_threshold = 2.8
+      min_lane_threshold = 2.6 #2.8
       # Set the blinker index based on which signal is on
       blinker_index = 0 if leftBlinker else 1
       current_lane = modeldata.laneLines[blinker_index + 1]
       desired_lane = modeldata.laneLines[blinker_index if leftBlinker else blinker_index + 2]
       road_edge = modeldata.roadEdges[blinker_index]
       # Check if the lane width exceeds the threshold
-      lane_width, distance_to_road_edge = self.calculate_lane_width(desired_lane, current_lane, road_edge)
+      lane_width, distance_to_road_edge = calculate_lane_width(desired_lane, current_lane, road_edge)
       lane_available = lane_width >= min_lane_threshold
 
     if not lateral_active or self.lane_change_timer > LANE_CHANGE_TIME_MAX:
       self.lane_change_state = LaneChangeState.off
       self.lane_change_direction = LaneChangeDirection.none
-    elif one_blinker and below_lane_change_speed and self.turn_desires and blinkerExtMode in [0,2]:
+    elif one_blinker and ((below_lane_change_speed and frogpilot_planner.turn_desires and blinkerExtMode in [0]) or blinkerExtMode == 2):
       self.turn_direction = TurnDirection.turnLeft if leftBlinker else TurnDirection.turnRight
       # Set the "turn_completed" flag to prevent lane changes after completing a turn
       self.turn_completed = True
@@ -141,15 +155,23 @@ class DesireHelper:
         blindspot_detected = ((carstate.leftBlindspot and self.lane_change_direction == LaneChangeDirection.left) or
                               (carstate.rightBlindspot and self.lane_change_direction == LaneChangeDirection.right))
 
+        object_dist = v_ego * 3.0
+        object_detected = ((self.leftSideObjectDist < object_dist and self.lane_change_direction == LaneChangeDirection.left) or
+                           (self.rightSideObjectDist < object_dist and self.lane_change_direction == LaneChangeDirection.right))
+
         # Conduct a nudgeless lane change if all the conditions are true
         self.lane_change_wait_timer += DT_MDL
         need_torque = False
         if (not carstate.leftBlinker and leftBlinkerExt > 0) or (not carstate.rightBlinker and rightBlinkerExt > 0):
           if not self.lane_available_prev and lane_available:
-            need_torque = False
+            if object_detected:
+              need_torque = True
+              self.lane_available_prev = False
+            else:
+              need_torque = False
           elif lane_available and blinkerExtMode > 0:  #0: voice etc, 1:noo helper lanechange, 2: noo helper turn
             need_torque = True
-        if not need_torque and self.nudgeless and lane_available and not self.lane_change_completed and self.lane_change_wait_timer >= self.lane_change_delay:          
+        if not need_torque and frogpilot_planner.nudgeless and lane_available and not self.lane_change_completed and self.lane_change_wait_timer >= frogpilot_planner.lane_change_delay:          
           torque_applied = True
           self.lane_change_wait_timer = 0
 
@@ -158,7 +180,7 @@ class DesireHelper:
           self.lane_change_direction = LaneChangeDirection.none
         elif torque_applied and not blindspot_detected:
           # Set the "lane_change_completed" flag to prevent any more lane changes if the toggle is on
-          self.lane_change_completed = self.one_lane_change
+          self.lane_change_completed = frogpilot_planner.one_lane_change
           self.lane_change_state = LaneChangeState.laneChangeStarting
 
       # LaneChangeState.laneChangeStarting
@@ -217,13 +239,3 @@ class DesireHelper:
         self.keep_pulse_timer = 0.0
       elif self.desire in (log.LateralPlan.Desire.keepLeft, log.LateralPlan.Desire.keepRight):
         self.desire = log.LateralPlan.Desire.none
-
-  def update_frogpilot_params(self, params):
-    self.blindspot_path = params.get_bool("CustomUI") and params.get_bool("BlindSpotPath")
-
-    self.nudgeless = params.get_bool("NudgelessLaneChange")
-    self.lane_change_delay = params.get_int("LaneChangeTime") if self.nudgeless else 0
-    self.lane_detection = params.get_bool("LaneDetection") if self.nudgeless else False
-    self.one_lane_change = params.get_bool("OneLaneChange") if self.nudgeless else False
-
-    self.turn_desires = params.get_bool("TurnDesires")

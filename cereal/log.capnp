@@ -130,8 +130,9 @@ struct InitData {
 
 struct FrameData {
   frameId @0 :UInt32;
-  encodeId @1 :UInt32; # DEPRECATED
   frameIdSensor @25 :UInt32;
+  requestId @28 :UInt32;
+  encodeId @1 :UInt32;
 
   frameType @7 :FrameType;
 
@@ -572,10 +573,12 @@ struct RadarState @0x9a185389d6fdd05f {
 
   leadOne @3 :LeadData;
   leadTwo @4 :LeadData;
+  leadLeft @13 :LeadData;
+  leadRight @14 :LeadData;
   cumLagMs @5 :Float32;
-  leadsLeft @13 : List(LeadData);
-  leadsCenter @14 : List(LeadData);
-  leadsRight @15 : List(LeadData);
+  leadsCenter @15 : List(LeadData);
+  leadsLeft @16 : List(LeadData);
+  leadsRight @17 : List(LeadData);
 
   struct LeadData {
     dRel @0 :Float32;
@@ -2226,6 +2229,8 @@ struct RoadLimitSpeed {
     xArg @21 : Text;
     xIndex @22 : Int16;
     roadcate @23 : Int16;
+    navInstruction @24 :NavInstruction;
+    xNextRoadWidth @25 : Int16;
 }
 
 struct Event {

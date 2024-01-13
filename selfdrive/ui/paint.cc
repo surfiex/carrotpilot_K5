@@ -371,8 +371,17 @@ void DrawApilot::drawLaneLines(const UIState* s) {
         left_blindspot = right_blindspot  = true;
 #endif
         color = nvgRGBA(255, 215, 0, 150);
-        if (left_blindspot) ui_draw_bsd(s, scene.lane_barrier_vertices[0], &color, false); // ui_draw_line(s, scene.lane_barrier_vertices[0], &color, nullptr);
-        if (right_blindspot) ui_draw_bsd(s, scene.lane_barrier_vertices[1], &color, true); // ui_draw_line(s, scene.lane_barrier_vertices[1], &color, nullptr);
+        NVGcolor color2 = nvgRGBA(0, 204, 0, 150);
+        auto lead_left = (*s->sm)["radarState"].getRadarState().getLeadLeft();
+        auto lead_right = (*s->sm)["radarState"].getRadarState().getLeadRight();
+        auto controls_state = (*s->sm)["controlsState"].getControlsState();
+        int leftBlinkerExt = controls_state.getLeftBlinkerExt();
+        int rightBlinkerExt = controls_state.getRightBlinkerExt();
+
+        if (left_blindspot) ui_draw_bsd(s, scene.lane_barrier_vertices[0], &color, false);
+        else if (lead_left.getStatus() && lead_left.getDRel() < getVEgo() * 3.0 && leftBlinkerExt >= 10000)  ui_draw_bsd(s, scene.lane_barrier_vertices[0], &color2, false);
+        if (right_blindspot) ui_draw_bsd(s, scene.lane_barrier_vertices[1], &color, true);
+        else if (lead_right.getStatus() && lead_right.getDRel() < getVEgo() * 3.0 && rightBlinkerExt >= 10000) ui_draw_bsd(s, scene.lane_barrier_vertices[1], &color2, true);
     }
 
     // road edges
@@ -1077,7 +1086,7 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
     float cur_speed = getVEgo() * (s->scene.is_metric ? MS_TO_KPH : MS_TO_MPH);
     if (cur_speed < 0.0) cur_speed = 0.0;
     auto controls_state = sm["controlsState"].getControlsState();
-    auto carstate = sm["carState"].getCarState();
+    //auto carstate = sm["carState"].getCarState();
     const auto road_limit_speed = sm["roadLimitSpeed"].getRoadLimitSpeed();
     //const auto car_params = sm["carParams"].getCarParams();
     if (s->show_mode == 3) {
@@ -1106,11 +1115,7 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
         float cruiseMaxSpeed = controls_state.getVCruiseCluster();// scc_smoother.getCruiseMaxSpeed();
         float applyMaxSpeed = controls_state.getVCruise();// HW: controls_state.getVCruiseOut();// scc_smoother.getApplyMaxSpeed();
         float curveSpeed = 0;//HW: controls_state.getCurveSpeed();
-        //cruiseAdjustment = 0.1 * s->scene.cruiseAdjustment * (s->scene.is_metric ? MS_TO_KPH : MS_TO_MPH) + 0.9 * cruiseAdjustment;
-        //cruiseAdjustment = fmax((0.1 * fmax(setSpeed - scene.adjusted_cruise - setSpeed, 0) * (is_metric ? MS_TO_KPH : MS_TO_MPH) + 0.9 * cruiseAdjustment) - 1, 0);
-        float vCluRatio = carstate.getVCluRatio();
-        if (vCluRatio < 0.5) vCluRatio = 1.0;
-        cruiseAdjustment = s->scene.adjusted_cruise / vCluRatio  * (s->scene.is_metric ? MS_TO_KPH : MS_TO_MPH) * 0.1 + cruiseAdjustment * 0.9;
+        cruiseAdjustment = s->scene.adjusted_cruise * 0.1 + cruiseAdjustment * 0.9;
         bool speedCtrlActive = false;
         //if (curveSpeed < 0) {
         //    speedCtrlActive = true;
@@ -1584,7 +1589,7 @@ void DrawApilot::drawPathEnd(const UIState* s, int x, int y, int path_x, int pat
         ui_draw_text(s, x, disp_y, str, disp_size, COLOR_WHITE, BOLD);
     }
     else if (isLongActive()) {
-        if (xState == 3) {      //XState.e2eStop
+        if (xState == 3 || xState == 5) {      //XState.e2eStop, XState.e2eStopped
             if (getVEgo() < 1.0) {
                 sprintf(str, "%s", (lp.getTrafficState() >= 1000) ? "신호오류" : "신호대기");
                 ui_draw_text(s, x, disp_y, str, disp_size, COLOR_WHITE, BOLD);

@@ -3,7 +3,7 @@ from panda import Panda
 from openpilot.common.conversions import Conversions as CV
 from openpilot.selfdrive.car import get_safety_config
 from openpilot.selfdrive.car.interfaces import CarInterfaceBase
-from openpilot.selfdrive.car.volkswagen.values import CAR, PQ_CARS, CANBUS, NetworkLocation, TransmissionType, GearShifter
+from openpilot.selfdrive.car.volkswagen.values import CAR, PQ_CARS, CANBUS, NetworkLocation, TransmissionType, GearShifter, VolkswagenFlags
 
 ButtonType = car.CarState.ButtonEvent.Type
 EventName = car.CarEvent.EventName
@@ -67,6 +67,9 @@ class CarInterface(CarInterfaceBase):
       else:
         ret.networkLocation = NetworkLocation.fwdCamera
 
+      if 0x126 in fingerprint[2]:  # HCA_01
+        ret.flags |= VolkswagenFlags.STOCK_HCA_PRESENT.value
+
     # Global lateral tuning defaults, can be overridden per-vehicle
 
     ret.steerActuatorDelay = 0.1
@@ -90,11 +93,9 @@ class CarInterface(CarInterfaceBase):
 
     ret.pcmCruise = not ret.openpilotLongitudinalControl
     ret.stoppingControl = True
-    ret.startingState = True
-    ret.startAccel = 1.0
     ret.stopAccel = -0.55
-    ret.vEgoStarting = 1.0
-    ret.vEgoStopping = 1.0
+    ret.vEgoStarting = 0.1
+    ret.vEgoStopping = 0.5
     ret.longitudinalTuning.kpV = [0.1]
     ret.longitudinalTuning.kiV = [0.0]
 
@@ -252,6 +253,6 @@ class CarInterface(CarInterfaceBase):
 
     return ret
 
-  def apply(self, c, now_nanos):
-    new_actuators, can_sends, self.eps_timer_soft_disable_alert = self.CC.update(c, self.CS, self.ext_bus, now_nanos)
+  def apply(self, c, now_nanos, sport_plus):
+    new_actuators, can_sends, self.eps_timer_soft_disable_alert = self.CC.update(c, self.CS, self.ext_bus, now_nanos, sport_plus)
     return new_actuators, can_sends

@@ -3,6 +3,8 @@ import json
 import math
 import os
 import threading
+import socket
+import struct
 
 import requests
 
@@ -74,6 +76,13 @@ class RouteEngine:
 
     self.update_frogpilot_params()
 
+    #carrot
+    self.carrot_route_thread = threading.Thread(target=self.carrot_route, args=[])
+    self.carrot_route_thread.daemon = True
+    self.carrot_route_thread.start()
+
+    self.carrot_route_active = False
+
   def update(self):
     # Update FrogPilot parameters
     if self.params_memory.get_bool("FrogPilotTogglesUpdated"):
@@ -89,7 +98,21 @@ class RouteEngine:
           threading.Timer(5.0, self.send_route).start()
         self.ui_pid = ui_pid[0]
 
+    roadLimitSpeed = self.sm['roadLimitSpeed']
+    #print(roadLimitSpeed.active)
+    if roadLimitSpeed.active >= 200:
+      pass
+    else:
+      self.carrot_route_active = False
+
     self.update_location()
+
+    if self.carrot_route_active:
+      msg = messaging.new_message('navInstruction', valid=True)
+      msg.navInstruction = roadLimitSpeed.navInstruction
+      #print(msg.navInstruction)
+      self.pm.send('navInstruction', msg)
+      return
     self.recompute_route()
     self.send_instruction()
 
@@ -173,37 +196,6 @@ class RouteEngine:
       resp.raise_for_status()
 
       r = resp.json()
-      r1 = resp.json()
-      # Function to remove specified keys recursively unnessary for display
-      def remove_keys(obj, keys_to_remove):
-        if isinstance(obj, list):
-          return [remove_keys(item, keys_to_remove) for item in obj]
-        elif isinstance(obj, dict):
-          return {key: remove_keys(value, keys_to_remove) for key, value in obj.items() if key not in keys_to_remove}
-        else:
-          return obj
-      keys_to_remove = ['geometry', 'annotation', 'incidents', 'intersections', 'components', 'sub', 'waypoints']
-      self.r2 = remove_keys(r1, keys_to_remove)
-      self.r3 = {}
-      # Add items for display under "routes"
-      if 'routes' in self.r2 and len(self.r2['routes']) > 0:
-        first_route = self.r2['routes'][0]
-        nav_destination_json = self.params.get('NavDestination')
-        try:
-          nav_destination_data = json.loads(nav_destination_json)
-          place_name = nav_destination_data.get('place_name', 'Default Place Name')
-          first_route['Destination'] = place_name
-          first_route['Metric'] = self.params.get_bool("IsMetric")
-          self.r3['CurrentStep'] = 0
-          self.r3['uuid'] = self.r2['uuid']
-        except json.JSONDecodeError as e:
-          print(f"Error decoding JSON: {e}")
-	  # Save slim json as file
-      with open('navdirections.json', 'w') as json_file:
-        json.dump(self.r2, json_file, indent=4)
-      with open('CurrentStep.json', 'w') as json_file:
-        json.dump(self.r3, json_file, indent=4)
-		
       if len(r['routes']):
         self.route = r['routes'][0]['legs'][0]['steps']
         self.route_geometry = []
@@ -362,12 +354,6 @@ class RouteEngine:
       if self.step_idx + 1 < len(self.route):
         self.step_idx += 1
         self.reset_recompute_limits()
-        # Update the 'CurrentStep' value in the JSON
-        if 'routes' in self.r2 and len(self.r2['routes']) > 0:
-          self.r3['CurrentStep'] = self.step_idx
-        # Write the modified JSON data back to the file
-        with open('CurrentStep.json', 'w') as json_file:
-          json.dump(self.r3, json_file, indent=4)
       else:
         cloudlog.warning("Destination reached")
 
@@ -389,7 +375,7 @@ class RouteEngine:
 
         # Calculate the distance to the stopSign or trafficLight
         distance_to_condition = self.last_position.distance_to(self.stop_coord[index])
-        if distance_to_condition < max((seconds_to_stop * v_ego), 25): 
+        if distance_to_condition < max((seconds_to_stop * v_ego), 25):
           self.nav_condition = True
         else:
           self.nav_condition = False  # Not approaching any stopSign or trafficLight
@@ -397,12 +383,17 @@ class RouteEngine:
         self.nav_condition = False  # No more stopSign or trafficLight in array
 
       # Determine if NoO distance to maneuver is upcoming
-      if distance_to_maneuver_along_geometry < max((seconds_to_stop * v_ego), 25): 
+      if distance_to_maneuver_along_geometry < max((seconds_to_stop * v_ego), 25):
         self.noo_condition = True
       else:
         self.noo_condition = False  # Not approaching any NoO maneuver
 
-    self.send_frogpilot_navigation()
+    frogpilot_plan_send = messaging.new_message('frogpilotNavigation')
+    frogpilotNavigation = frogpilot_plan_send.frogpilotNavigation
+
+    frogpilotNavigation.navigationConditionMet = self.conditional_navigation and (self.nav_condition or self.noo_condition)
+
+    self.pm.send('frogpilotNavigation', frogpilot_plan_send)
 
   def send_route(self):
     coords = []
@@ -452,20 +443,88 @@ class RouteEngine:
     return self.reroute_counter > REROUTE_COUNTER_MIN
     # TODO: Check for going wrong way in segment
 
-  def send_frogpilot_navigation(self):
-    frogpilot_plan_send = messaging.new_message('frogpilotNavigation')
-    frogpilotNavigation = frogpilot_plan_send.frogpilotNavigation
-
-    frogpilotNavigation.navigationConditionMet = self.conditional_navigation and (self.nav_condition or self.noo_condition)
-
-    self.pm.send('frogpilotNavigation', frogpilot_plan_send)
-
   def update_frogpilot_params(self):
     self.conditional_navigation = self.params.get_bool("CENavigation")
 
+  def recvall(self, sock, n):
+    """n바이트를 수신할 때까지 반복적으로 데이터를 받는 함수"""
+    data = bytearray()
+    while len(data) < n:
+      packet = sock.recv(n - len(data))
+      if not packet:
+        return None
+      data.extend(packet)
+    return data
+
+  def receive_double(self, sock):
+    double_data = self.recvall(sock, 8)  # Double은 8바이트
+    return struct.unpack('!d', double_data)[0]
+
+  def receive_float(self, sock):
+    float_data = self.recvall(sock, 4)  # Float은 4바이트
+    return struct.unpack('!f', float_data)[0]
+
+  def carrot_route(self):
+    host = '0.0.0.0'  # 혹은 다른 호스트 주소
+    port = 7709  # 포트 번호
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+      s.bind((host, port))
+      s.listen()
+
+      while True:
+        print("################# waiting conntection from CarrotMan route #####################")
+        # 클라이언트 연결 기다림
+        conn, addr = s.accept()
+        with conn:
+          print(f"Connected by {addr}")
+
+          # 전체 데이터 크기 수신
+          total_size_bytes = self.recvall(conn, 4)
+          if not total_size_bytes:
+            print("Connection closed or error occurred")
+            continue
+          try:
+            total_size = struct.unpack('!I', total_size_bytes)[0]
+            # 전체 데이터를 한 번에 수신
+            all_data = self.recvall(conn, total_size)
+            if all_data is None:
+                print("Connection closed or incomplete data received")
+                continue
+
+           # 수신된 데이터를 float 값들로 분할
+            #points = []
+            #for i in range(0, len(all_data), 8):  # 각 점에 대해 8바이트(4바이트 * 2)
+            #  x, y = struct.unpack('!ff', all_data[i:i+8])
+            #  points.append((x, y))
+
+            points = []
+            for i in range(0, len(all_data), 8):
+              x, y = struct.unpack('!ff', all_data[i:i+8])
+              coord = Coordinate.from_mapbox_tuple((x, y))
+              points.append(coord)
+            coords = [c.as_dict() for c in points]
+            #points = [
+            #  {'latitude': y, 'longitude': x}
+            #  for i in range(0, len(all_data), 8) 
+            #  for x, y in [struct.unpack('!ff', all_data[i:i+8])]
+            #]
+         
+            print("Received points:", len(points))
+            print("Received points:", coords)
+
+            msg = messaging.new_message('navRoute', valid=True)
+            msg.navRoute.coordinates = coords
+            self.pm.send('navRoute', msg)
+            self.carrot_route_active = True
+
+          except Exception as e:
+            print(e)
+
+
 def main():
   pm = messaging.PubMaster(['navInstruction', 'navRoute', 'frogpilotNavigation'])
-  sm = messaging.SubMaster(['carState', 'liveLocationKalman', 'managerState'])
+  sm = messaging.SubMaster(['carState', 'liveLocationKalman', 'managerState', 'roadLimitSpeed'])
 
   rk = Ratekeeper(1.0)
   route_engine = RouteEngine(sm, pm)

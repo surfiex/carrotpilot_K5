@@ -2,20 +2,25 @@
 
 #include <set>
 
+#include "selfdrive/frogpilot/ui/frogpilot_functions.h"
 #include "selfdrive/ui/qt/offroad/settings.h"
 
-class FrogPilotVisualsPanel : public ListWidget {
+class FrogPilotVisualsPanel : public FrogPilotListWidget {
   Q_OBJECT
 
 public:
   explicit FrogPilotVisualsPanel(SettingsWindow *parent);
 
+signals:
+  void closeParentToggle();
+  void openParentToggle();
+
 private:
   void hideEvent(QHideEvent *event);
   void hideSubToggles();
   void parentToggleClicked();
-  void setDefaults();
-  void updateState();
+  void updateMetric();
+  void updateToggles();
 
   std::set<QString> customOnroadUIKeys;
   std::set<QString> customThemeKeys;

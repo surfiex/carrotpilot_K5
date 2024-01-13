@@ -67,7 +67,7 @@ private:
   Params params;
 
   // FrogPilot variables
-  ToggleControl* disableOnroadUploadsToggle;
+  ToggleControl *disableOnroadUploadsToggle;
 
 signals:
   void backPress();

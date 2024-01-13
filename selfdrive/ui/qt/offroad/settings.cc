@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <QDebug>
+#include <QScrollBar>
 
 #include "selfdrive/ui/qt/network/networking.h"
 
@@ -23,10 +24,10 @@
 #include "selfdrive/ui/qt/util.h"
 #include "selfdrive/ui/qt/qt_window.h"
 
+#include "selfdrive/frogpilot/navigation/ui/navigation_settings.h"
 #include "selfdrive/frogpilot/ui/control_settings.h"
 #include "selfdrive/frogpilot/ui/vehicle_settings.h"
 #include "selfdrive/frogpilot/ui/visual_settings.h"
-#include "selfdrive/frogpilot/navigation/ui/navigation_settings.h"
 
 TogglesPanel::TogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
   // param, title, desc, icon
@@ -121,6 +122,10 @@ TogglesPanel::TogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
 
   connect(toggles["ExperimentalLongitudinalEnabled"], &ToggleControl::toggleFlipped, [=]() {
     updateToggles();
+  });
+
+  connect(toggles["IsMetric"], &ToggleControl::toggleFlipped, [=]() {
+    updateMetric();
   });
 }
 
@@ -253,7 +258,7 @@ DevicePanel::DevicePanel(SettingsWindow *parent) : ListWidget(parent) {
   addItem(translateBtn);
 
   // Delete driving footage button
-  const auto deleteFootageBtn = new ButtonControl(tr("Delete Driving Data"), tr("DELETE"), tr("This button provides a swift and secure way to permanently delete all "
+  auto deleteFootageBtn = new ButtonControl(tr("Delete Driving Data"), tr("DELETE"), tr("This button provides a swift and secure way to permanently delete all "
     "stored driving footage and data from your device. Ideal for maintaining privacy or freeing up space.")
   );
   connect(deleteFootageBtn, &ButtonControl::clicked, [this]() {
@@ -265,19 +270,19 @@ DevicePanel::DevicePanel(SettingsWindow *parent) : ListWidget(parent) {
   addItem(deleteFootageBtn);
 
   // Panda flashing button
-  const auto flashPandaBtn = new ButtonControl(tr("Flash Panda"), tr("FLASH"), "Use this button to troubleshoot and update the Panda device's firmware.");
+  auto flashPandaBtn = new ButtonControl(tr("Flash Panda"), tr("FLASH"), "Use this button to troubleshoot and update the Panda device's firmware.");
   connect(flashPandaBtn, &ButtonControl::clicked, [this]() {
     if (!ConfirmationDialog::confirm(tr("Are you sure you want to flash the Panda?"), tr("Flash"), this)) return;
     QProcess process;
     // Get Panda type
-    const SubMaster &sm = *(uiState()->sm);
-    const auto pandaStates = sm["pandaStates"].getPandaStates();
+    SubMaster &sm = *(uiState()->sm);
+    auto pandaStates = sm["pandaStates"].getPandaStates();
     // Choose recovery script based on Panda type
     if (pandaStates.size() != 0) {
-      const auto pandaType = pandaStates[0].getPandaType();
-      const bool isRedPanda = (pandaType == cereal::PandaState::PandaType::RED_PANDA ||
+      auto pandaType = pandaStates[0].getPandaType();
+      bool isRedPanda = (pandaType == cereal::PandaState::PandaType::RED_PANDA ||
                                pandaType == cereal::PandaState::PandaType::RED_PANDA_V2);
-      const QString recoveryScript = isRedPanda ? "./recover.sh" : "./recover.py";
+      QString recoveryScript = isRedPanda ? "./recover.sh" : "./recover.py";
       // Run recovery script and flash Panda
       process.setWorkingDirectory("/data/openpilot/panda/board");
       process.start("/bin/sh", QStringList{"-c", recoveryScript});
@@ -425,8 +430,9 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
   sidebar_layout->addSpacing(10);
   sidebar_layout->addWidget(close_btn, 0, Qt::AlignRight);
   QObject::connect(close_btn, &QPushButton::clicked, [this]() {
-    if (paramsMemory.getInt("FrogPilotTogglesOpen") == 1) {
-      paramsMemory.putInt("FrogPilotTogglesOpen", 2);
+    if (frogPilotTogglesOpen) {
+      frogPilotTogglesOpen = false;
+      this->closeParentToggle();
     } else {
       this->closeSettings();
     }
@@ -439,6 +445,15 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
 
   TogglesPanel *toggles = new TogglesPanel(this);
   QObject::connect(this, &SettingsWindow::expandToggleDescription, toggles, &TogglesPanel::expandToggleDescription);
+  QObject::connect(toggles, &TogglesPanel::updateMetric, this, &SettingsWindow::updateMetric);
+
+  FrogPilotControlsPanel *frogpilotControls = new FrogPilotControlsPanel(this);
+  QObject::connect(frogpilotControls, &FrogPilotControlsPanel::closeParentToggle, this, [this]() {frogPilotTogglesOpen = false;});
+  QObject::connect(frogpilotControls, &FrogPilotControlsPanel::openParentToggle, this, [this]() {frogPilotTogglesOpen = true;});
+
+  FrogPilotVisualsPanel *frogpilotVisuals = new FrogPilotVisualsPanel(this);
+  QObject::connect(frogpilotVisuals, &FrogPilotVisualsPanel::closeParentToggle, this, [this]() {frogPilotTogglesOpen = false;});
+  QObject::connect(frogpilotVisuals, &FrogPilotVisualsPanel::openParentToggle, this, [this]() {frogPilotTogglesOpen = true;});
 
   QList<QPair<QString, QWidget *>> panels = {
     {tr("Device"), device},
@@ -446,10 +461,10 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
     {tr("Toggles"), toggles},
     {tr("Software"), new SoftwarePanel(this)},
     {tr("Carrot"), new CarrotPanel(this)},
-    {tr("Controls"), new FrogPilotControlsPanel(this)},
+    {tr("Controls"), frogpilotControls},
     {tr("Navigation"), new FrogPilotNavigationPanel(this)},
     {tr("Vehicles"), new FrogPilotVehiclesPanel(this)},
-    {tr("Visuals"), new FrogPilotVisualsPanel(this)},
+    {tr("Visuals"), frogpilotVisuals},
   };
 
   nav_btns = new QButtonGroup(this);
@@ -482,7 +497,22 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
     ScrollView *panel_frame = new ScrollView(panel, this);
     panel_widget->addWidget(panel_frame);
 
+    if (name == tr("Controls") || name == tr("Visuals")) {
+      QScrollBar *scrollbar = panel_frame->verticalScrollBar();
+
+      QObject::connect(scrollbar, &QScrollBar::valueChanged, this, [this](int value) {
+        if (!frogPilotTogglesOpen) {
+          previousScrollPosition = value;
+        }
+      });
+
+      QObject::connect(scrollbar, &QScrollBar::rangeChanged, this, [this, panel_frame]() {
+        panel_frame->restorePosition(previousScrollPosition);
+      });
+    }
+
     QObject::connect(btn, &QPushButton::clicked, [=, w = panel_frame]() {
+      previousScrollPosition = 0;
       btn->setChecked(true);
       panel_widget->setCurrentWidget(w);
     });
@@ -646,7 +676,7 @@ CarrotPanel::CarrotPanel(QWidget* parent) : QWidget(parent) {
     speedToggles->addItem(new CValueControl("AutoNaviSpeedSafetyFactor", "SpeedCameraSafetyFactor(105%)", "", ".. / assets / offroad / icon_road.png", 80, 120, 1));
     speedToggles->addItem(new CValueControl("AutoNaviSpeedBumpTime", "SpeedBumpTimeDistance(1s)", "", ".. / assets / offroad / icon_road.png", 1, 50, 1));
     speedToggles->addItem(new CValueControl("AutoNaviSpeedBumpSpeed", "SpeedBumpSpeed(35Km/h)", "", ".. / assets / offroad / icon_road.png", 10, 100, 5));
-    speedToggles->addItem(new CValueControl("AutoTurnControl", "NOO Helper(0)", "0:없음,1:외부네비 작동, 2:자동차로변경", "../assets/offroad/icon_road.png", 0, 2, 1));
+    speedToggles->addItem(new CValueControl("AutoTurnControl", "NOO Helper(0)", "0:없음,1:차선변경,2:차선변경+속도,3:속도", "../assets/offroad/icon_road.png", 0, 3, 1));
     speedToggles->addItem(new CValueControl("AutoTurnControlSpeedLaneChange", "NOO Helper LaneChange Speed (60)", "0:없음,차로변경속도", "../assets/offroad/icon_road.png", 0, 100, 5));
     speedToggles->addItem(new CValueControl("AutoTurnControlSpeedTurn", "NOO Helper Turn Speed (20)", "0:없음, 턴속도", "../assets/offroad/icon_road.png", 0, 100, 5));
     speedToggles->addItem(new CValueControl("AutoTurnControlTurnEnd", "NOO Helper Turn CtrlDistTime (6)", "dist=speed*time", "../assets/offroad/icon_road.png", 0, 30, 1));
@@ -764,4 +794,7 @@ void CValueControl::refresh()
     label.setText(QString::fromStdString(Params().get(m_params.toStdString())));
     btnminus.setText("－");
     btnplus.setText("＋");
+}
+void CValueControl::showEvent(QShowEvent* event) {    
+    refresh();
 }

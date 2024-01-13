@@ -38,7 +38,7 @@ private:
   Alert alert = {};
 
   // FrogPilot variables
-  const UIScene &scene;
+  UIScene &scene;
 };
 
 class Compass : public QWidget {
@@ -81,15 +81,15 @@ private:
   bool engageable;
 
   // FrogPilot variables
+  UIScene &scene;
+
+  std::map<int, QPixmap> wheelImages;
+
+  bool firefoxRandomEventTriggered;
   bool rotatingWheel;
   int steeringAngleDeg;
   int wheelIcon;
   int y_offset;
-
-  std::map<int, QPixmap> wheelImages;
-
-  Params paramsMemory{"/dev/shm/params"};
-  const UIScene &scene;
 };
 
 
@@ -119,7 +119,8 @@ private:
 
   Params params;
   Params paramsMemory{"/dev/shm/params"};
-  const UIScene &scene;
+
+  UIScene &scene;
 
   int personalityProfile = 0;
 
@@ -172,6 +173,16 @@ private:
   void updateFrogPilotWidgets(QPainter &p);
 
   // FrogPilot variables
+  Params paramsMemory{"/dev/shm/params"};
+
+  UIScene &scene;
+
+  Compass *compass_img;
+  PersonalityButton *personality_btn;
+  ScreenRecorder *recorder_btn;
+
+  QHBoxLayout *bottom_layout;
+
   bool accelerationPath;
   bool adjacentPath;
   bool alwaysOnLateral;
@@ -189,18 +200,14 @@ private:
   bool slcOverridden;
   bool turnSignalLeft;
   bool turnSignalRight;
+  bool useSI;
   double maxAcceleration;
   float cruiseAdjustment;
-  float desiredFollow;
   float laneWidthLeft;
   float laneWidthRight;
-  float obstacleDistance;
-  float obstacleDistanceStock;
   float slcOverriddenSpeed;
   float slcSpeedLimit;
   float slcSpeedLimitOffset;
-  float stoppedEquivalence;
-  float stoppedEquivalenceStock;
   int bearingDeg;
   int cameraView;
   int conditionalSpeed;
@@ -208,22 +215,16 @@ private:
   int conditionalStatus;
   int customColors;
   int customSignals;
+  int desiredFollow;
+  int obstacleDistance;
+  int obstacleDistanceStock;
+  int stoppedEquivalence;
   int totalFrames = 8;
   QTimer *animationTimer;
   size_t animationFrameIndex;
 
   std::unordered_map<int, std::pair<QString, std::pair<QColor, std::map<double, QBrush>>>> themeConfiguration;
   std::vector<QPixmap> signalImgVector;
-
-  QHBoxLayout *bottom_layout;
-
-  Compass *compass_img;
-  PersonalityButton *personality_btn;
-  ScreenRecorder *recorder_btn;
-
-  Params params;
-  Params paramsMemory{"/dev/shm/params"};
-  const UIScene &scene;
 
 protected:
   void paintGL() override;
@@ -265,12 +266,10 @@ private:
   QHBoxLayout* split;
 
   // FrogPilot variables
+  UIScene &scene;
+
   QPoint timeoutPoint = QPoint(420, 69);
   QTimer clickTimer;
-
-  Params params;
-  Params paramsMemory{"/dev/shm/params"};
-  const UIScene &scene;
 
 private slots:
   void offroadTransition(bool offroad);

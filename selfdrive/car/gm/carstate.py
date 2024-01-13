@@ -6,7 +6,7 @@ from openpilot.common.params import Params
 from opendbc.can.can_define import CANDefine
 from opendbc.can.parser import CANParser
 from openpilot.selfdrive.car.interfaces import CarStateBase
-from openpilot.selfdrive.car.gm.values import DBC, AccState, CanBus, STEER_THRESHOLD, GMFlags, CC_ONLY_CAR, CAMERA_ACC_CAR, SDGM_CAR
+from openpilot.selfdrive.car.gm.values import CAR, DBC, AccState, CanBus, STEER_THRESHOLD, GMFlags, CC_ONLY_CAR, CAMERA_ACC_CAR, SDGM_CAR, CruiseButtons
 
 TransmissionType = car.CarParams.TransmissionType
 NetworkLocation = car.CarParams.NetworkLocation
@@ -26,12 +26,26 @@ class CarState(CarStateBase):
     self.loopback_lka_steering_cmd_ts_nanos = 0
     self.pt_lka_steering_cmd_counter = 0
     self.cam_lka_steering_cmd_counter = 0
+    self.param = Params()
+    self.param_memory = Params("/dev/shm/params")
+
+    # GAP_DIST
+    self.distance_button_pressed = False
+
+    # use cluster speed & vCluRatio
+    self.use_cluster_speed = True
     self.buttons_counter = 0
 
     self.single_pedal_mode = False
 
+    # for delay Accfault event
+    self.accFaultedCount = 0
+
   def update(self, pt_cp, cam_cp, loopback_cp):
     ret = car.CarState.new_message()
+
+    # GAP_DIST
+    self.distance_button_pressed = pt_cp.vl["ASCMSteeringButton"]["DistanceButton"] != 0
 
     self.prev_cruise_buttons = self.cruise_buttons
     if self.CP.carFingerprint not in SDGM_CAR:
@@ -43,10 +57,13 @@ class CarState(CarStateBase):
     self.pscm_status = copy.copy(pt_cp.vl["PSCMStatus"])
     moving_forward = pt_cp.vl["EBCMWheelSpdRear"]["MovingForward"] != 0
     self.moving_backward = (pt_cp.vl["EBCMWheelSpdRear"]["MovingBackward"] != 0) and not moving_forward
+    # GAP_DIST
+    if self.cruise_buttons in [CruiseButtons.UNPRESS, CruiseButtons.INIT] and self.distance_button_pressed:
+      self.cruise_buttons = CruiseButtons.GAP_DIST
 
-    # Forwarded BSM message
-    ret.leftBlindspot = pt_cp.vl["left_blindspot"]["leftbsmlight"] == 1
-    ret.rightBlindspot = pt_cp.vl["right_blindspot"]["rightbsmlight"] == 1
+    if self.CP.enableBsm:
+      ret.leftBlindspot = pt_cp.vl["BCMBSM"]["Left_BSM"] == 1
+      ret.rightBlindspot = pt_cp.vl["BCMBSM"]["Right_BSM"] == 1
 
     # Variables used for avoiding LKAS faults
     self.loopback_lka_steering_cmd_updated = len(loopback_cp.vl_all["ASCMLKASteeringCmd"]["RollingCounter"]) > 0
@@ -55,6 +72,9 @@ class CarState(CarStateBase):
     if self.CP.networkLocation == NetworkLocation.fwdCamera and not self.CP.flags & GMFlags.NO_CAMERA.value:
       self.pt_lka_steering_cmd_counter = pt_cp.vl["ASCMLKASteeringCmd"]["RollingCounter"]
       self.cam_lka_steering_cmd_counter = cam_cp.vl["ASCMLKASteeringCmd"]["RollingCounter"]
+    # use cluster speed & vCluRatio(longitudialPlanner)
+    cluSpeed = pt_cp.vl["ECMVehicleSpeed"]["VehicleSpeed"]
+    ret.vEgoCluster = cluSpeed * CV.MPH_TO_MS
 
     ret.wheelSpeeds = self.get_wheel_speeds(
       pt_cp.vl["EBCMWheelSpdFront"]["FLWheelSpd"],
@@ -62,9 +82,17 @@ class CarState(CarStateBase):
       pt_cp.vl["EBCMWheelSpdRear"]["RLWheelSpd"],
       pt_cp.vl["EBCMWheelSpdRear"]["RRWheelSpd"],
     )
-    ret.vEgoRaw = mean([ret.wheelSpeeds.fl, ret.wheelSpeeds.fr, ret.wheelSpeeds.rl, ret.wheelSpeeds.rr])
-    ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
-    # sample rear wheel speeds, standstill=True if ECM allows engagement with brake
+    # use cluster speed & vCluRatio(longitudialPlanner)
+    if self.use_cluster_speed:
+      ret.vEgoRaw = cluSpeed * CV.MPH_TO_MS
+      ret.vEgo, ret.aEgo = self.update_clu_speed_kf(ret.vEgoRaw)
+
+    else:
+      ret.vEgoRaw = mean([ret.wheelSpeeds.fl, ret.wheelSpeeds.fr, ret.wheelSpeeds.rl, ret.wheelSpeeds.rr]) * (105./100.)
+      ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
+
+    ret.vCluRatio = (ret.vEgoCluster / ret.vEgo) if (ret.vEgo > 3. and ret.vEgoCluster > 3.) else 1.0
+
     ret.standstill = ret.wheelSpeeds.rl <= STANDSTILL_THRESHOLD and ret.wheelSpeeds.rr <= STANDSTILL_THRESHOLD
 
     if pt_cp.vl["ECMPRDNL2"]["ManualMode"] == 1:
@@ -92,8 +120,11 @@ class CarState(CarStateBase):
 
     if self.CP.enableGasInterceptor:
       ret.gas = (pt_cp.vl["GAS_SENSOR"]["INTERCEPTOR_GAS"] + pt_cp.vl["GAS_SENSOR"]["INTERCEPTOR_GAS2"]) / 2.
-      threshold = 20 if self.CP.carFingerprint in CAMERA_ACC_CAR else 4
-      ret.gasPressed = ret.gas > threshold
+      if self.CP.carFingerprint in (CAR.BOLT_EUV, CAR.BOLT_CC):
+        ret.gasPressed = ret.gas > 20
+      else:
+        threshold = 20 if self.CP.carFingerprint in CAMERA_ACC_CAR else 4
+        ret.gasPressed = ret.gas > threshold
     else:
       ret.gas = pt_cp.vl["AcceleratorPedal2"]["AcceleratorPedal2"] / 254.
       ret.gasPressed = ret.gas > 1e-5
@@ -137,11 +168,15 @@ class CarState(CarStateBase):
       ret.parkingBrake = cam_cp.vl["BCMGeneralPlatformStatus"]["ParkBrakeSwActive"] == 1
     ret.cruiseState.available = pt_cp.vl["ECMEngineStatus"]["CruiseMainOn"] != 0
     ret.espDisabled = pt_cp.vl["ESPStatus"]["TractionControlOn"] != 1
-    ret.accFaulted = (pt_cp.vl["AcceleratorPedal2"]["CruiseState"] == AccState.FAULTED or
+    # for delay Accfault event
+    accFaulted = (pt_cp.vl["AcceleratorPedal2"]["CruiseState"] == AccState.FAULTED or \
                       pt_cp.vl["EBCMFrictionBrakeStatus"]["FrictionBrakeUnavailable"] == 1)
+    self.accFaultedCount = self.accFaultedCount + 1 if accFaulted else 0
+    ret.accFaulted = True if self.accFaultedCount > 50 else False
 
     ret.cruiseState.enabled = pt_cp.vl["AcceleratorPedal2"]["CruiseState"] != AccState.OFF
     ret.cruiseState.standstill = pt_cp.vl["AcceleratorPedal2"]["CruiseState"] == AccState.STANDSTILL
+    ret.cruiseState.standstill = False
     if self.CP.networkLocation == NetworkLocation.fwdCamera and not self.CP.flags & GMFlags.NO_CAMERA.value:
       if self.CP.carFingerprint not in CC_ONLY_CAR:
         ret.cruiseState.speed = cam_cp.vl["ASCMActiveCruiseControlStatus"]["ACCSpeedSetpoint"] * CV.KPH_TO_MS
@@ -250,6 +285,7 @@ class CarState(CarStateBase):
       ("EBCMFrictionBrakeStatus", 20),
       ("PSCMSteeringAngle", 100),
       ("ECMAcceleratorPos", 80),
+      ("ECMVehicleSpeed", 20),
     ]
 
     # BSM does not send a signal until the first instance of it lighting up

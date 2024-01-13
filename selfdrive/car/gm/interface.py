@@ -7,7 +7,7 @@ from openpilot.common.conversions import Conversions as CV
 from openpilot.common.params import Params
 from openpilot.selfdrive.car import create_button_events, get_safety_config
 from openpilot.selfdrive.car.gm.radar_interface import RADAR_HEADER_MSG
-from openpilot.selfdrive.car.gm.values import CAR, CruiseButtons, CarControllerParams, EV_CAR, CAMERA_ACC_CAR, CanBus, GMFlags, CC_ONLY_CAR, SDGM_CAR
+from openpilot.selfdrive.car.gm.values import CAR, CruiseButtons, CarControllerParams, EV_CAR, CAMERA_ACC_CAR, CanBus, GMFlags, CC_ONLY_CAR, SDGM_CAR, SLOW_ACC
 from openpilot.selfdrive.car.interfaces import CarInterfaceBase, TorqueFromLateralAccelCallbackType, FRICTION_THRESHOLD
 from openpilot.selfdrive.controls.lib.drive_helpers import get_friction
 
@@ -18,9 +18,11 @@ GearShifter = car.CarState.GearShifter
 TransmissionType = car.CarParams.TransmissionType
 NetworkLocation = car.CarParams.NetworkLocation
 BUTTONS_DICT = {CruiseButtons.RES_ACCEL: ButtonType.accelCruise, CruiseButtons.DECEL_SET: ButtonType.decelCruise,
-                CruiseButtons.MAIN: ButtonType.altButton3, CruiseButtons.CANCEL: ButtonType.cancel}
+                CruiseButtons.MAIN: ButtonType.altButton3, CruiseButtons.CANCEL: ButtonType.cancel,
+                CruiseButtons.GAP_DIST: ButtonType.gapAdjustCruise}
 
 ACCELERATOR_POS_MSG = 0xbe
+BSM_MSG = 0x142
 CAM_MSG = 0x320  # AEBCmd
                  # TODO: Is this always linked to camera presence?
 PEDAL_MSG = 0x201
@@ -35,8 +37,11 @@ NON_LINEAR_TORQUE_PARAMS = {
 
 class CarInterface(CarInterfaceBase):
   @staticmethod
-  def get_pid_accel_limits(CP, current_speed, cruise_speed):
-    return CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX
+  def get_pid_accel_limits(CP, current_speed, cruise_speed, sport_plus):
+    if sport_plus:
+      return CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX_PLUS
+    else:
+      return CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX
 
   # Determined by iteratively plotting and minimizing error for f(angle, speed) = steer.
   @staticmethod
@@ -76,10 +81,16 @@ class CarInterface(CarInterfaceBase):
 
   @staticmethod
   def _get_params(ret, candidate, fingerprint, car_fw, experimental_long, docs):
+    # FrogPilot variables
+    params = Params()
+    useGasRegenCmd = params.get_bool("GasRegenCmd")
+
     ret.carName = "gm"
     ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.gm)]
     ret.autoResumeSng = False
-    ret.enableGasInterceptor = PEDAL_MSG in fingerprint[0]
+    if PEDAL_MSG in fingerprint[0]:
+      ret.enableGasInterceptor = True
+      ret.safetyConfigs[0].safetyParam |= Panda.FLAG_GM_GAS_INTERCEPTOR
 
     useEVTables = Params().get_bool("EVTable")
 
@@ -91,7 +102,7 @@ class CarInterface(CarInterfaceBase):
     ret.longitudinalTuning.deadzoneBP = [0.]
     ret.longitudinalTuning.deadzoneV = [0.15]
 
-    ret.longitudinalTuning.kpBP = [5., 35.]
+    ret.longitudinalTuning.kpBP = [0.]
     ret.longitudinalTuning.kiBP = [0.]
 
     if candidate in CAMERA_ACC_CAR:
@@ -104,11 +115,14 @@ class CarInterface(CarInterfaceBase):
       ret.minSteerSpeed = 10 * CV.KPH_TO_MS
 
       # Tuning for experimental long
-      ret.longitudinalTuning.kpV = [2.0, 1.5]
+      ret.longitudinalTuning.kpV = [2.0]
       ret.longitudinalTuning.kiV = [0.72]
       ret.stoppingDecelRate = 2.0  # reach brake quickly after enabling
       ret.vEgoStopping = 0.25
       ret.vEgoStarting = 0.25
+
+      if candidate in SLOW_ACC and useGasRegenCmd:
+        ret.longitudinalTuning.kpV = [1.5, 1.125]
 
       if experimental_long:
         ret.pcmCruise = False
@@ -130,21 +144,19 @@ class CarInterface(CarInterfaceBase):
       ret.radarUnavailable = RADAR_HEADER_MSG not in fingerprint[CanBus.OBSTACLE] and not docs
       ret.pcmCruise = False  # stock non-adaptive cruise control is kept off
       # supports stop and go, but initial engage must (conservatively) be above 18mph
-      ret.minEnableSpeed = 18 * CV.MPH_TO_MS
+      ret.minEnableSpeed = -1 * CV.MPH_TO_MS if Params().get_bool("LowerVolt") else 18
       ret.minSteerSpeed = (6.7 if useEVTables else 7) * CV.MPH_TO_MS
 
       # Tuning
-      ret.longitudinalTuning.kpV = [2.4, 1.5]
+      ret.longitudinalTuning.kpV = [1.75]
       ret.longitudinalTuning.kiV = [0.36]
+      ret.stoppingDecelRate = 0.2
       if ret.enableGasInterceptor:
         # Need to set ASCM long limits when using pedal interceptor, instead of camera ACC long limits
         ret.safetyConfigs[0].safetyParam |= Panda.FLAG_GM_HW_ASCM_LONG
 
     # Start with a baseline tuning for all GM vehicles. Override tuning as needed in each model section below.
-    ret.lateralTuning.pid.kiBP, ret.lateralTuning.pid.kpBP = [[0.], [0.]]
-    ret.lateralTuning.pid.kpV, ret.lateralTuning.pid.kiV = [[0.2], [0.00]]
-    ret.lateralTuning.pid.kf = 0.00004   # full torque for 20 deg at 80mph means 0.00007818594
-    ret.steerActuatorDelay = 0.1  # Default delay, not measured yet
+    ret.steerActuatorDelay = 0.2  # Default delay, not measured yet
     ret.tireStiffnessFactor = 0.444  # not optimized yet
 
     ret.steerLimitTimer = 0.4
@@ -159,20 +171,26 @@ class CarInterface(CarInterfaceBase):
       ret.tireStiffnessFactor = 0.469  # Stock Michelin Energy Saver A/S, LiveParameters
       ret.centerToFront = ret.wheelbase * 0.45  # Volt Gen 1, TODO corner weigh
 
-      ret.lateralTuning.pid.kpBP = [0., 40.]
-      ret.lateralTuning.pid.kpV = [0., 0.17]
-      ret.lateralTuning.pid.kiBP = [0.]
-      ret.lateralTuning.pid.kiV = [0.]
-      ret.lateralTuning.pid.kf = 1.  # get_steer_feedforward_volt()
       ret.steerActuatorDelay = 0.18 if useEVTables else 0.2
+      CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+
+      ret.longitudinalTuning.kpBP = [0.]
+      ret.longitudinalTuning.kpV = [1.75]
+      ret.longitudinalTuning.kiBP = [0.]
+      ret.longitudinalTuning.kiV = [0.36]
+      ret.stoppingDecelRate = 0.2 # brake_travel/s while trying to stop
+      ret.stopAccel = -0.5
+      ret.startAccel = 0.8
+      ret.vEgoStopping = 0.1
+      ret.enableBsm = BSM_MSG in fingerprint[0]
 
       # softer long tune for ev table
       if useEVTables: 
-        ret.longitudinalTuning.kpBP = [5., 15., 35.]
-        ret.longitudinalTuning.kpV = [0.65, .9, 0.8]
-        ret.longitudinalTuning.kiBP = [5., 15.]
-        ret.longitudinalTuning.kiV = [0.04, 0.1]
-        ret.stoppingDecelRate = 0.02  # brake_travel/s while trying to stop
+        ret.longitudinalTuning.kpBP = [0.]
+        ret.longitudinalTuning.kpV = [1.75]
+        ret.longitudinalTuning.kiBP = [0.]
+        ret.longitudinalTuning.kiV = [0.36]
+        ret.stoppingDecelRate = 0.1 # brake_travel/s while trying to stop
         ret.stopAccel = -0.5
         ret.startAccel = 0.8
         ret.vEgoStopping = 0.1
@@ -261,6 +279,8 @@ class CarInterface(CarInterfaceBase):
       ret.steerRatio = 16.3
       ret.centerToFront = ret.wheelbase * 0.5
       ret.tireStiffnessFactor = 1.0
+      if useGasRegenCmd:
+        ret.stopAccel = -0.25
       # On the Bolt, the ECM and camera independently check that you are either above 5 kph or at a stop
       # with foot on brake to allow engagement, but this platform only has that check in the camera.
       # TODO: check if this is split by EV/ICE with more platforms in the future
@@ -275,7 +295,7 @@ class CarInterface(CarInterfaceBase):
       ret.centerToFront = ret.wheelbase * 0.4
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
-    elif candidate == CAR.TRAILBLAZER:
+    elif candidate in (CAR.TRAILBLAZER, CAR.TRAILBLAZER_CC):
       ret.mass = 1345.
       ret.wheelbase = 2.64
       ret.steerRatio = 16.8
@@ -373,6 +393,9 @@ class CarInterface(CarInterfaceBase):
     if ACCELERATOR_POS_MSG not in fingerprint[CanBus.POWERTRAIN]:
       ret.flags |= GMFlags.NO_ACCELERATOR_POS_MSG.value
 
+    # Detect if BSM message is present
+    ret.enableBsm = BSM_MSG in fingerprint[CanBus.POWERTRAIN]
+
     return ret
 
   # returns a car.CarState
@@ -414,18 +437,18 @@ class CarInterface(CarInterfaceBase):
     if self.belowSteerSpeed_shown and ret.vEgo > self.CP.minSteerSpeed:
       self.disable_belowSteerSpeed = True
 
+    if (self.CP.flags & GMFlags.CC_LONG.value) and ret.vEgo < self.CP.minEnableSpeed and ret.cruiseState.enabled:
+      events.add(EventName.speedTooLow)
+
     if (self.CP.flags & GMFlags.PEDAL_LONG.value) and \
       self.CP.transmissionType == TransmissionType.direct and \
       not self.CS.single_pedal_mode and \
       c.longActive:
-      events.add(FrogPilotEventName.pedalInterceptorNoBrake)
-
-    if (self.CP.flags & GMFlags.CC_LONG.value) and ret.vEgo < self.CP.minEnableSpeed and ret.cruiseState.enabled:
-      events.add(EventName.speedTooLow)
+      events.add(EventName.pedalInterceptorNoBrake)
 
     ret.events = events.to_msg()
 
     return ret
 
-  def apply(self, c, now_nanos):
+  def apply(self, c, now_nanos, sport_plus):
     return self.CC.update(c, self.CS, now_nanos)

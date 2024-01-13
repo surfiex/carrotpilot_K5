@@ -13,6 +13,8 @@
 #include "common/watchdog.h"
 #include "system/hardware/hw.h"
 
+#include "selfdrive/frogpilot/ui/frogpilot_functions.h"
+
 #define BACKLIGHT_DT 0.05
 #define BACKLIGHT_TS 10.00
 
@@ -36,55 +38,6 @@ static bool calib_frame_to_full_frame(const UIState *s, float in_x, float in_y, 
   return false;
 }
 
-int get_path_length_idx(const cereal::XYZTData::Reader &line, const float path_height) {
-  const auto line_x = line.getX();
-  int max_idx = 0;
-  for (int i = 1; i < line_x.size() && line_x[i] <= path_height; ++i) {
-    max_idx = i;
-  }
-  return max_idx;
-}
-
-void update_leads(UIState *s, const cereal::RadarState::Reader &radar_state, const cereal::XYZTData::Reader &line) {
-  float max_distance = s->scene.max_distance;
-  int idx = get_path_length_idx(line, max_distance);
-  float y = line.getY()[idx];
-  float z = line.getZ()[idx];
-  for (int i = 0; i < 2; ++i) {
-    auto lead_data = (i == 0) ? radar_state.getLeadOne() : radar_state.getLeadTwo();
-    if (lead_data.getStatus()) {
-      //float z = line.getZ()[get_path_length_idx(line, lead_data.getDRel())];
-      z = line.getZ()[get_path_length_idx(line, lead_data.getDRel())];
-      calib_frame_to_full_frame(s, lead_data.getDRel(), -lead_data.getYRel(), z + 1.22, &s->scene.lead_vertices[i]);
-      //calib_frame_to_full_frame(s, lead_data.getDRel(), (i == 0) ? lead_one.getY()[0] : -lead_data.getYRel(), z + 1.22, &s->scene.lead_vertices[i]);
-      s->scene.lead_radar[i] = lead_data.getRadar();
-      max_distance = lead_data.getDRel();
-      y = -lead_data.getYRel();
-    }
-    else
-      s->scene.lead_radar[i] = false;
-      
-    calib_frame_to_full_frame(s, max_distance, y - 1.2, z + 1.22, &s->scene.path_end_left_vertices[i]);
-    calib_frame_to_full_frame(s, max_distance, y + 1.2, z + 1.22, &s->scene.path_end_right_vertices[i]);
-  }
-
-  s->scene.lead_vertices_side.clear();
-  for (auto const& rs : { radar_state.getLeadsLeft(), radar_state.getLeadsRight(), radar_state.getLeadsCenter() }) {
-      for (auto const& l : rs) {
-          lead_vertex_data vd;
-          QPointF vtmp;
-          z = line.getZ()[get_path_length_idx(line, l.getDRel())];
-          calib_frame_to_full_frame(s, l.getDRel(), -l.getYRel(), z + 0.61, &vtmp);
-          vd.x = vtmp.x();
-          vd.y = vtmp.y();
-          vd.d = l.getDRel();
-          vd.v = l.getVLeadK();
-          vd.y_rel = l.getYRel();
-          vd.v_lat = l.getVLat();
-          s->scene.lead_vertices_side.push_back(vd);
-      }
-  }
-}
 template <class T>
 float interp(float x, std::initializer_list<T> x_list, std::initializer_list<T> y_list, bool extrapolate)
 {
@@ -126,32 +79,6 @@ float interp(float x, const T* x_list, const T* y_list, size_t size, bool extrap
 
     T dydx = (yR - yL) / (xR - xL);
     return yL + dydx * (x - xL);
-}
-void update_line_data(const UIState* s, const cereal::XYZTData::Reader& line,
-    float y_off, float z_off_left, float z_off_right, QPolygonF* pvd, int max_idx, bool allow_invert = true, float y_shift = 0.0) {
-    const auto line_x = line.getX(), line_y = line.getY(), line_z = line.getZ();
-    QPolygonF left_points, right_points;
-    left_points.reserve(max_idx + 1);
-    right_points.reserve(max_idx + 1);
-
-    //printf("%.1f,%.1f,%.1f\n", line_x[0], line_y[0], line_z[0]);
-
-    for (int i = 0; i <= max_idx; i++) {
-        // highly negative x positions  are drawn above the frame and cause flickering, clip to zy plane of camera
-        if (line_x[i] < 0) continue;
-        QPointF left, right;
-        bool l = calib_frame_to_full_frame(s, line_x[i], line_y[i] - y_off + y_shift, line_z[i] + z_off_left, &left);
-        bool r = calib_frame_to_full_frame(s, line_x[i], line_y[i] + y_off + y_shift, line_z[i] + z_off_right, &right);
-        if (l && r) {
-            // For wider lines the drawn polygon will "invert" when going over a hill and cause artifacts
-            if (!allow_invert && left_points.size() && left.y() > left_points.back().y()) {
-                continue;
-            }
-            left_points.push_back(left);
-            right_points.push_front(right);
-        }
-    }
-    *pvd = left_points + right_points;
 }
 void update_line_data2(const UIState* s, const cereal::XYZTData::Reader& line,
     float width_apply, float z_off_start, float z_off_end, QPolygonF* pvd, int max_idx, bool allow_invert = true) {
@@ -389,6 +316,82 @@ void update_line_data_dist3(const UIState* s, const cereal::XYZTData::Reader& li
     *pvd = left_points + right_points;
 }
 
+int get_path_length_idx(const cereal::XYZTData::Reader &line, const float path_height) {
+  const auto line_x = line.getX();
+  int max_idx = 0;
+  for (int i = 1; i < line_x.size() && line_x[i] <= path_height; ++i) {
+    max_idx = i;
+  }
+  return max_idx;
+}
+
+void update_leads(UIState *s, const cereal::RadarState::Reader &radar_state, const cereal::XYZTData::Reader &line) {
+  float max_distance = s->scene.max_distance;
+  int idx = get_path_length_idx(line, max_distance);
+  float y = line.getY()[idx];
+  float z = line.getZ()[idx];
+  for (int i = 0; i < 4; ++i) {
+    auto lead_data = (i == 0) ? radar_state.getLeadOne() : (i == 1) ? radar_state.getLeadTwo() : (i == 2) ? radar_state.getLeadLeft() : radar_state.getLeadRight();
+    if (lead_data.getStatus()) {
+      //float z = line.getZ()[get_path_length_idx(line, lead_data.getDRel())];
+      z = line.getZ()[get_path_length_idx(line, lead_data.getDRel())];
+      calib_frame_to_full_frame(s, lead_data.getDRel(), -lead_data.getYRel(), z + 1.22, &s->scene.lead_vertices[i]);
+      //calib_frame_to_full_frame(s, lead_data.getDRel(), (i == 0) ? lead_one.getY()[0] : -lead_data.getYRel(), z + 1.22, &s->scene.lead_vertices[i]);
+      s->scene.lead_radar[i] = lead_data.getRadar();
+      max_distance = lead_data.getDRel();
+      y = -lead_data.getYRel();
+    }
+    else
+      s->scene.lead_radar[i] = false;
+      
+    if (i >= 2) continue;
+    calib_frame_to_full_frame(s, max_distance, y - 1.2, z + 1.22, &s->scene.path_end_left_vertices[i]);
+    calib_frame_to_full_frame(s, max_distance, y + 1.2, z + 1.22, &s->scene.path_end_right_vertices[i]);
+  }
+
+  s->scene.lead_vertices_side.clear();
+  for (auto const& rs : { radar_state.getLeadsLeft(), radar_state.getLeadsRight(), radar_state.getLeadsCenter() }) {
+      for (auto const& l : rs) {
+          lead_vertex_data vd;
+          QPointF vtmp;
+          z = line.getZ()[get_path_length_idx(line, l.getDRel())];
+          calib_frame_to_full_frame(s, l.getDRel(), -l.getYRel(), z + 0.61, &vtmp);
+          vd.x = vtmp.x();
+          vd.y = vtmp.y();
+          vd.d = l.getDRel();
+          vd.v = l.getVLeadK();
+          vd.y_rel = l.getYRel();
+          vd.v_lat = l.getVLat();
+          s->scene.lead_vertices_side.push_back(vd);
+      }
+  }
+}
+
+void update_line_data(const UIState *s, const cereal::XYZTData::Reader &line,
+                      float y_off, float z_off_left, float z_off_right, QPolygonF* pvd, int max_idx, bool allow_invert=true, float y_shift = 0.0) {
+  const auto line_x = line.getX(), line_y = line.getY(), line_z = line.getZ();
+  QPolygonF left_points, right_points;
+  left_points.reserve(max_idx + 1);
+  right_points.reserve(max_idx + 1);
+
+  for (int i = 0; i <= max_idx; i++) {
+    // highly negative x positions  are drawn above the frame and cause flickering, clip to zy plane of camera
+    if (line_x[i] < 0) continue;
+    QPointF left, right;
+    bool l = calib_frame_to_full_frame(s, line_x[i], line_y[i] - y_off + y_shift, line_z[i] + z_off_left, &left);
+    bool r = calib_frame_to_full_frame(s, line_x[i], line_y[i] + y_off + y_shift, line_z[i] + z_off_right, &right);
+    if (l && r) {
+      // For wider lines the drawn polygon will "invert" when going over a hill and cause artifacts
+      if (!allow_invert && left_points.size() && left.y() > left_points.back().y()) {
+        continue;
+      }
+      left_points.push_back(left);
+      right_points.push_front(right);
+    }
+  }
+  *pvd = left_points + right_points;
+}
+
 void update_model(UIState *s,
                   const cereal::ModelDataV2::Reader &model,
                   const cereal::UiPlan::Reader &plan) {
@@ -418,9 +421,10 @@ void update_model(UIState *s,
     update_line_data(s, lane_lines[i], scene.model_ui ? scene.lane_line_width * scene.lane_line_probs[i] : 0.025 * scene.lane_line_probs[i], 0, 0, &scene.lane_line_vertices[i], max_idx);
   }
   // lane barriers for blind spot
-  int max_idx_barrier = get_path_length_idx(plan_position, 40.0);
-  update_line_data(s, plan_position, 0, 1.2 - 0.05, 1.2 - 0.6, &scene.lane_barrier_vertices[0], max_idx_barrier, false, -1.7); // 차선폭을 알면 좋겠지만...
-  update_line_data(s, plan_position, 0, 1.2 - 0.05, 1.2 - 0.6, &scene.lane_barrier_vertices[1], max_idx_barrier, false, 1.7);
+  int max_idx_barrier_l = get_path_length_idx(plan_position, 40.0);
+  int max_idx_barrier_r = get_path_length_idx(plan_position, 40.0);
+  update_line_data(s, plan_position, 0, 1.2 - 0.05, 1.2 - 0.6, &scene.lane_barrier_vertices[0], max_idx_barrier_l, false, -1.7); // 차선폭을 알면 좋겠지만...
+  update_line_data(s, plan_position, 0, 1.2 - 0.05, 1.2 - 0.6, &scene.lane_barrier_vertices[1], max_idx_barrier_r, false, 1.7);
 
   // update road edges
   const auto road_edges = model.getRoadEdges();
@@ -445,16 +449,15 @@ void update_model(UIState *s,
   if (longActive == false) show_path_mode = s->show_path_mode_cruise_off;
   max_idx = get_path_length_idx(plan_position, max_distance);
   if(s->show_mode == 0) {
-  update_line_data(s, plan_position, scene.model_ui ? scene.path_width * (1 - scene.path_edge_width / 100) : 0.9, 1.22, 1.22, &scene.track_vertices, max_idx, false);
-
-  // update path edges
-  update_line_data(s, plan_position, scene.model_ui ? scene.path_width : 0, 1.22, 1.22, &scene.track_edge_vertices, max_idx, false);
-
-  // update left adjacent path
-  update_line_data(s, lane_lines[4], scene.blind_spot_path ? scene.lane_width_left / 2 : 0, 0, 0, &scene.track_left_adjacent_lane_vertices, max_idx);
-
-  // update right adjacent path
-  update_line_data(s, lane_lines[5], scene.blind_spot_path ? scene.lane_width_right / 2 : 0, 0, 0, &scene.track_right_adjacent_lane_vertices, max_idx);
+    update_line_data(s, plan_position, scene.model_ui ? scene.path_width * (1 - scene.path_edge_width / 100) : 0.9, 1.22, 1.22, &scene.track_vertices, max_idx, false);
+  
+    // update path edges
+    update_line_data(s, plan_position, scene.model_ui ? scene.path_width : 0, 1.22, 1.22, &scene.track_edge_vertices, max_idx, false);
+  
+    // update adjacent paths
+    for (int i = 4; i <= 5; i++) {
+      update_line_data(s, lane_lines[i], scene.blind_spot_path ? (i == 4 ? scene.lane_width_left : scene.lane_width_right) / 2 : 0, 0, 0, &scene.track_adjacent_vertices[i], max_idx);
+    }
   }
   else if (show_path_mode == 0) {
       update_line_data2(s, plan_position, s->show_path_width, s->show_z_offset, s->show_z_offset, &scene.track_vertices, max_idx);
@@ -551,7 +554,7 @@ static void update_state(UIState *s) {
     scene.longitudinal_control = sm["carParams"].getCarParams().getOpenpilotLongitudinalControl();
   }
   if (sm.updated("carState")) {
-    const auto carState = sm["carState"].getCarState();
+    auto carState = sm["carState"].getCarState();
     if (scene.blind_spot_path || scene.custom_signals) {
       scene.blind_spot_left = carState.getLeftBlindspot();
       scene.blind_spot_right = carState.getRightBlindspot();
@@ -568,31 +571,30 @@ static void update_state(UIState *s) {
     }
   }
   if (sm.updated("controlsState")) {
-    const auto controlsState = sm["controlsState"].getControlsState();
+    auto controlsState = sm["controlsState"].getControlsState();
     scene.enabled = controlsState.getEnabled();
     scene.experimental_mode = controlsState.getExperimentalMode();
   }
   if (sm.updated("frogpilotCarControl")) {
-    const auto frogpilotCarControl = sm["frogpilotCarControl"].getFrogpilotCarControl();
+    auto frogpilotCarControl = sm["frogpilotCarControl"].getFrogpilotCarControl();
     if (scene.always_on_lateral) {
       scene.always_on_lateral_active = !scene.enabled && frogpilotCarControl.getAlwaysOnLateral();
     }
   }
   if (sm.updated("frogpilotLateralPlan")) {
-    const auto frogpilotLateralPlan = sm["frogpilotLateralPlan"].getFrogpilotLateralPlan();
+    auto frogpilotLateralPlan = sm["frogpilotLateralPlan"].getFrogpilotLateralPlan();
     if (scene.blind_spot_path) {
       scene.lane_width_left = frogpilotLateralPlan.getLaneWidthLeft();
       scene.lane_width_right = frogpilotLateralPlan.getLaneWidthRight();
     }
   }
   if (sm.updated("frogpilotLongitudinalPlan")) {
-    const auto frogpilotLongitudinalPlan = sm["frogpilotLongitudinalPlan"].getFrogpilotLongitudinalPlan();
+    auto frogpilotLongitudinalPlan = sm["frogpilotLongitudinalPlan"].getFrogpilotLongitudinalPlan();
     if (scene.lead_info) {
       scene.desired_follow = frogpilotLongitudinalPlan.getDesiredFollowDistance();
       scene.obstacle_distance = frogpilotLongitudinalPlan.getSafeObstacleDistance();
       scene.obstacle_distance_stock = frogpilotLongitudinalPlan.getSafeObstacleDistanceStock();
       scene.stopped_equivalence = frogpilotLongitudinalPlan.getStoppedEquivalenceFactor();
-      scene.stopped_equivalence_stock = frogpilotLongitudinalPlan.getStoppedEquivalenceFactorStock();
     }
     if (scene.speed_limit_controller) {
       scene.speed_limit = frogpilotLongitudinalPlan.getSlcSpeedLimit();
@@ -603,9 +605,9 @@ static void update_state(UIState *s) {
     scene.adjusted_cruise = frogpilotLongitudinalPlan.getAdjustedCruise();
   }
   if (sm.updated("liveLocationKalman")) {
-    const auto liveLocationKalman = sm["liveLocationKalman"].getLiveLocationKalman();
+    auto liveLocationKalman = sm["liveLocationKalman"].getLiveLocationKalman();
     if (scene.compass) {
-      const auto orientation = liveLocationKalman.getCalibratedOrientationNED();
+      auto orientation = liveLocationKalman.getCalibratedOrientationNED();
       if (orientation.getValid()) {
         scene.bearing_deg = RAD2DEG(orientation.getValue()[2]);
       }
@@ -626,12 +628,12 @@ static void update_state(UIState *s) {
 }
 
 void ui_update_params(UIState *s) {
-  static Params params = Params();
+  auto params = Params();
   s->scene.is_metric = params.getBool("IsMetric");
   s->scene.map_on_left = params.getBool("NavSettingLeftSide");
 
   // FrogPilot variables
-  static UIScene &scene = s->scene;
+  UIScene &scene = s->scene;
 
   scene.always_on_lateral = params.getBool("AlwaysOnLateral");
   scene.camera_view = params.getInt("CameraView");
@@ -647,13 +649,11 @@ void ui_update_params(UIState *s) {
   scene.lead_info = scene.custom_onroad_ui && params.getBool("LeadInfo");
   scene.road_name_ui = scene.custom_onroad_ui && params.getBool("RoadNameUI");
   scene.show_fps = scene.custom_onroad_ui && params.getBool("ShowFPS");
+  scene.use_si = scene.custom_onroad_ui && params.getBool("UseSI");
 
   scene.custom_theme = params.getBool("CustomTheme");
   scene.custom_colors = scene.custom_theme ? params.getInt("CustomColors") : 0;
   scene.custom_signals = scene.custom_theme ? params.getInt("CustomSignals") : 0;
-
-  scene.driver_camera = params.getBool("DriverCamera");
-  scene.experimental_mode_via_press = params.getBool("ExperimentalModeViaPress");
 
   scene.model_ui = params.getBool("ModelUI");
   scene.acceleration_path = scene.model_ui && params.getBool("AccelerationPath");
@@ -663,12 +663,14 @@ void ui_update_params(UIState *s) {
   scene.road_edge_width = params.getInt("RoadEdgesWidth") * (scene.is_metric ? 1 : INCH_TO_CM) / 200;
   scene.unlimited_road_ui_length = scene.model_ui && params.getBool("UnlimitedLength");
 
+  scene.driver_camera = params.getBool("DriverCamera");
+  scene.experimental_mode_via_press = params.getBool("ExperimentalModeViaPress");
   scene.mute_dm = params.getBool("FireTheBabysitter") && params.getBool("MuteDM");
   scene.personalities_via_screen = (params.getInt("AdjustablePersonalities") == 2 || params.getInt("AdjustablePersonalities") == 3);
 
   scene.rotating_wheel = params.getBool("RotatingWheel");
+  scene.screen_brightness = params.getInt("ScreenBrightness");
   scene.speed_limit_controller = params.getBool("SpeedLimitController");
-
   scene.wheel_icon = params.getInt("WheelIcon");
 
 
@@ -752,9 +754,9 @@ void UIState::updateStatus() {
 
 UIState::UIState(QObject *parent) : QObject(parent) {
   sm = std::make_unique<SubMaster, const std::initializer_list<const char *>>({
-    "modelV2", "controlsState", "liveCalibration", "radarState", "deviceState", "roadCameraState",
+    "modelV2", "controlsState", "liveCalibration", "radarState", "deviceState",
     "pandaStates", "carParams", "driverMonitoringState", "carState", "liveLocationKalman", "driverStateV2",
-    "wideRoadCameraState", "managerState", "navInstruction", "navRoute", "uiPlan", "liveLocationKalman",
+    "wideRoadCameraState", "managerState", "navInstruction", "navRoute", "uiPlan",
     "frogpilotCarControl", "frogpilotDeviceState", "frogpilotLateralPlan", "frogpilotLongitudinalPlan",
     "lateralPlan", "longitudinalPlan","carControl", "liveParameters", "roadLimitSpeed", "liveTorqueParameters",
   });
@@ -774,6 +776,8 @@ UIState::UIState(QObject *parent) : QObject(parent) {
   wifi = new WifiManager(this);
 
   scene.screen_brightness = params.getInt("ScreenBrightness");
+
+  setDefaultParams();
 }
 
 void UIState::update() {
@@ -787,7 +791,7 @@ void UIState::update() {
   emit uiUpdate(*this);
 
   // Update FrogPilot variables when they are changed
-  static Params paramsMemory{"/dev/shm/params"};
+  Params paramsMemory{"/dev/shm/params"};
   if (paramsMemory.getBool("FrogPilotTogglesUpdated")) {
     ui_update_params(this);
     emit uiUpdateFrogPilotParams();

@@ -162,7 +162,7 @@ typedef struct UIScene {
   float max_distance;
 
   // lead
-  QPointF lead_vertices[2];
+  QPointF lead_vertices[4];
   bool lead_radar[2] = {false, false};
   std::vector<lead_vertex_data> lead_vertices_side;
   // DMoji state
@@ -210,34 +210,34 @@ typedef struct UIScene {
   bool turn_signal_left;
   bool turn_signal_right;
   bool unlimited_road_ui_length;
-  int bearing_deg;
-  int camera_view;
-  int conditional_speed;
-  int conditional_speed_lead;
-  int conditional_status;
-  int custom_colors;
-  int custom_signals;
-  int screen_brightness;
-  int steering_angle_deg;
-  int wheel_icon;
+  bool use_si;
   float adjusted_cruise;
-  float desired_follow;
   float lane_line_width;
   float lane_width_left;
   float lane_width_right;
-  float obstacle_distance;
-  float obstacle_distance_stock;
   float path_edge_width;
   float path_width;
   float road_edge_width;
   float speed_limit;
   float speed_limit_offset;
   float speed_limit_overridden_speed;
-  float stopped_equivalence;
-  float stopped_equivalence_stock;
+  int bearing_deg;
+  int camera_view;
+  int conditional_speed;
+  int conditional_speed_lead;
+  int conditional_status;
+  int current_random_event;
+  int custom_colors;
+  int custom_signals;
+  int desired_follow;
+  int obstacle_distance;
+  int obstacle_distance_stock;
+  int screen_brightness;
+  int steering_angle_deg;
+  int stopped_equivalence;
+  int wheel_icon;
+  QPolygonF track_adjacent_vertices[6];
   QPolygonF track_edge_vertices;
-  QPolygonF track_left_adjacent_lane_vertices;
-  QPolygonF track_right_adjacent_lane_vertices;
 
 } UIScene;
 
