@@ -215,8 +215,8 @@ class Controls:
 
     self.startup_event = get_startup_event(car_recognized, controller_available, len(self.CP.carFw) > 0)
 
-    if not sounds_available:
-      self.events.add(EventName.soundsUnavailable, static=True)
+#    if not sounds_available:
+#      self.events.add(EventName.soundsUnavailable, static=True)
     if not car_recognized:
       self.events.add(EventName.carUnrecognized, static=True)
       if len(self.CP.carFw) > 0:
@@ -831,7 +831,7 @@ class Controls:
     if self.CP.pcmCruise:
       if self.enabled and self.carrotCruiseActivate < 0:
         CC.cruiseControl.cancel = True
-      elif CC.cruiseControl.cancel: 
+      elif CC.cruiseControl.cancel:
         print("Cancel state...enabled={}, activate={}".format(self.enabled, self.carrotCruiseActivate))
         if self.carrotCruiseActivate > 0:
           CC.cruiseControl.cancel = False
@@ -862,7 +862,7 @@ class Controls:
     CC.cruiseControl.activate = self.carrotCruiseActivate > 0
     CC.hudControl.softHold = self.v_cruise_helper.softHoldActive
     CC.hudControl.activeAPM = self.v_cruise_helper.activeAPM
-        
+
     hudControl.rightLaneVisible = CC.latActive
     hudControl.leftLaneVisible = CC.latActive
 
