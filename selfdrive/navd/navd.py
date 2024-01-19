@@ -103,6 +103,8 @@ class RouteEngine:
     if roadLimitSpeed.active >= 200:
       pass
     else:
+      if self.carrot_route_active:
+        self.params.remove("NavDestination")
       self.carrot_route_active = False
 
     self.update_location()
@@ -314,7 +316,10 @@ class RouteEngine:
     for i in range(self.step_idx + 1, len(self.route)):
       total_distance += self.route[i]['distance']
       total_time += self.route[i]['duration']
-      total_time_typical += self.route[i]['duration_typical']
+      if self.route[i]['duration_typical'] is None:
+        total_time_typical += self.route[i]['duration']
+      else:
+        total_time_typical += self.route[i]['duration_typical']
 
     msg.navInstruction.distanceRemaining = total_distance
     msg.navInstruction.timeRemaining = total_time
@@ -511,12 +516,17 @@ class RouteEngine:
             #]
          
             print("Received points:", len(points))
-            print("Received points:", coords)
+            #print("Received points:", coords)
 
             msg = messaging.new_message('navRoute', valid=True)
             msg.navRoute.coordinates = coords
             self.pm.send('navRoute', msg)
             self.carrot_route_active = True
+
+            if len(coords):
+              dest = coords[-1]
+              dest['place_name'] = "External Navi"
+              self.params.put("NavDestination", json.dumps(dest))
 
           except Exception as e:
             print(e)

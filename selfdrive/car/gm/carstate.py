@@ -231,7 +231,7 @@ class CarState(CarStateBase):
         self.previous_personality_profile = self.personality_profile
 
     # Toggle Experimental Mode from steering wheel function
-    if self.experimental_mode_via_press and ret.cruiseState.available:
+    if self.experimental_mode_via_lkas and ret.cruiseState.available:
       if self.CP.carFingerprint in SDGM_CAR:
         lkas_pressed = cam_cp.vl["ASCMSteeringButton"]["LKAButton"]
       else:

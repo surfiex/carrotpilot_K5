@@ -55,7 +55,7 @@ def calculate_lane_width(lane, current_lane, road_edge):
 
 
 class FrogPilotPlanner:
-  def __init__(self, params):
+  def __init__(self, params, params_memory):
     self.cem = ConditionalExperimentalMode()
     self.mtsc = MapTurnSpeedController()
 
@@ -67,9 +67,12 @@ class FrogPilotPlanner:
     self.v_cruise = 0
     self.vtsc_target = 0
 
+    #carrot
+    self.vCluRatio = 1.0
+
     self.x_desired_trajectory = np.zeros(CONTROL_N)
 
-    self.update_frogpilot_params(params)
+    self.update_frogpilot_params(params, params_memory)
 
   def update(self, sm, mpc):
     carState, controlsState, modelData = sm['carState'], sm['controlsState'], sm['modelV2']
@@ -198,7 +201,7 @@ class FrogPilotPlanner:
     frogpilot_longitudinal_plan_send.valid = sm.all_checks(service_list=['carState', 'controlsState'])
     frogpilotLongitudinalPlan = frogpilot_longitudinal_plan_send.frogpilotLongitudinalPlan
 
-    frogpilotLongitudinalPlan.adjustedCruise = float(min(self.mtsc_target, self.vtsc_target) * (CV.MS_TO_KPH if self.is_metric else CV.MS_TO_MPH))
+    frogpilotLongitudinalPlan.adjustedCruise = float(min(self.mtsc_target, self.vtsc_target) / self.vCluRatio * (CV.MS_TO_KPH if self.is_metric else CV.MS_TO_MPH))
     frogpilotLongitudinalPlan.conditionalExperimental = self.cem.experimental_mode
     frogpilotLongitudinalPlan.distances = self.x_desired_trajectory.tolist()
     frogpilotLongitudinalPlan.redLight = bool(self.cem.red_light_detected)
@@ -213,9 +216,11 @@ class FrogPilotPlanner:
     frogpilotLongitudinalPlan.slcSpeedLimit = float(self.slc_target)
     frogpilotLongitudinalPlan.slcSpeedLimitOffset = float(SpeedLimitController.offset)
 
+    frogpilotLongitudinalPlan.vtscControllingCurve = bool(self.mtsc_target < self.vtsc_target)
+
     pm.send('frogpilotLongitudinalPlan', frogpilot_longitudinal_plan_send)
 
-  def update_frogpilot_params(self, params):
+  def update_frogpilot_params(self, params, params_memory):
     self.is_metric = params.get_bool("IsMetric")
 
     self.blindspot_path = params.get_bool("CustomUI") and params.get_bool("BlindSpotPath")
@@ -244,6 +249,8 @@ class FrogPilotPlanner:
     self.smoother_braking = params.get_bool("SmoothBraking") and longitudinal_tune
 
     self.map_turn_speed_controller = params.get_bool("MTSCEnabled")
+    if self.map_turn_speed_controller:
+      params_memory.put_int("MapTargetLatA", 2 * (params.get_int("MTSCAggressiveness") / 100))
 
     self.nudgeless = params.get_bool("NudgelessLaneChange")
     self.lane_change_delay = params.get_int("LaneChangeTime") if self.nudgeless else 0

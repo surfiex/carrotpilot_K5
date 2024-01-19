@@ -3,7 +3,7 @@ import math
 from cereal import car
 from opendbc.can.parser import CANParser
 from openpilot.selfdrive.car.interfaces import RadarInterfaceBase
-from openpilot.selfdrive.car.hyundai.values import DBC
+from openpilot.selfdrive.car.hyundai.values import DBC, CANFD_CAR
 from openpilot.common.params import Params
 from openpilot.common.filter_simple import StreamingMovingAverage
 
@@ -30,6 +30,10 @@ def get_radar_can_parser_scc(CP):
   # 레이더트랙만 이용하고 싶은경우
   if enable_radar_tracks: 
     return None
+
+  if CP.carFingerprint in CANFD_CAR:
+    return None
+
 
   ## 레이더트랙과 SCC레이더를 같이 사용하고 싶은경우.. (서로 주파수가 달라 사용하기엔 radard를 수정해야함)
   #if enable_radar_tracks and not scc2: #레이더트랙은 켜져있으나, SCC2가 아닌경우  : SCC기능정지후 사용하는 롱컨..

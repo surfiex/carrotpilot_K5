@@ -11,8 +11,8 @@ THNEED_FILE = os.path.join(DESTINATION_PATH, "supercombo.thneed")
 
 MODEL_NAME = {
   0: "new-delhi",
-  1: "blue-diamond-v2",
-  2: "blue-diamond-v1",
+  1: "blue-diamond-v1",
+  2: "blue-diamond-v2",
   3: "farmville",
   4: "new-lemon-pie",
 }

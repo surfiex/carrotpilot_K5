@@ -621,8 +621,8 @@ void DrawPlot::makePlotData(const UIState* s, float& data1, float& data2) {
     auto    car_state = sm["carState"].getCarState();
     float   a_ego = car_state.getAEgo();
     float   v_ego = car_state.getVEgo();
-    //auto    car_control = sm["carControl"].getCarControl();
-    //float   accel = car_control.getActuators().getAccel();
+    auto    car_control = sm["carControl"].getCarControl();
+    float   accel_out = car_control.getActuators().getAccel();
     auto    live_parameters = sm["liveParameters"].getLiveParameters();
     float   roll = live_parameters.getRoll();
     auto    controls_state = sm["controlsState"].getControlsState();
@@ -670,7 +670,7 @@ void DrawPlot::makePlotData(const UIState* s, float& data1, float& data2) {
         break;
     case 7:
         data1 = a_ego; // 노
-        data2 = accel;  // 녹
+        data2 = accel_out;  // 녹
         break;
     default:
         data1 = data2 = 0;
@@ -989,14 +989,7 @@ void DrawApilot::drawConnInfo(const UIState* s) {
 }
 void DrawApilot::drawGapInfo(const UIState* s, int x, int y) {
     char    str[128];
-    //SubMaster& sm = *(s->sm);
-    //auto car_state = sm["carState"].getCarState();
-    //auto controls_state = sm["controlsState"].getControlsState();
-    //const auto lp = sm["longitudinalPlan"].getLongitudinalPlan();
-    // 타겟좌측 : 갭표시
-    //int active = controls_state.getActive();
-    float gap = Params().getInt("LongitudinalPersonality")+1;// lp.getCruiseGap();
-    //float tFollow = 1.0;// HW: lp.getTFollow();
+    float gap = Params().getInt("LongitudinalPersonality") + 1;// lp.getCruiseGap();
     int gap1 = gap;// controls_state.getLongCruiseGap(); // car_state.getCruiseGap();
 #ifdef __TEST
     drivingMode = 3;
@@ -1020,7 +1013,7 @@ void DrawApilot::drawGapInfo(const UIState* s, int x, int y) {
         case 2: strcpy(strDrivingMode, "NOR"); break;
         case 3: strcpy(strDrivingMode, "SPT"); break;
         default:
-            sprintf(strDrivingMode,"ERR%d", drivingMode); break;
+            sprintf(strDrivingMode, "ERR%d", drivingMode); break;
             //strcpy(strDrivingMode, "ERR"); break;
         }
     }
@@ -1034,16 +1027,16 @@ void DrawApilot::drawGapInfo(const UIState* s, int x, int y) {
 
         ui_draw_text(s, x + dxGap + 15, y + 120.0, strDrivingMode, 30, COLOR_WHITE, BOLD);
     }
-    static char _strDrivingMode[128]="";
-    if (strcmp(strDrivingMode, _strDrivingMode)) ui_draw_text_a(s, x + dxGap + 15, y + 120, strDrivingMode, 30, COLOR_WHITE, BOLD);
-    strcpy(_strDrivingMode, strDrivingMode);
+    //static char _strDrivingMode[128] = "";
+    //if (strcmp(strDrivingMode, _strDrivingMode)) ui_draw_text_a(s, x + dxGap + 15, y + 120, strDrivingMode, 30, COLOR_WHITE, BOLD);
+    //strcpy(_strDrivingMode, strDrivingMode);
 
-    char strLatControlMode[128]="";
-    int useLaneLineSpeed = Params().getInt("UseLaneLineSpeed");
-    strcpy(strLatControlMode, (useLaneLineSpeed > 0) ? tr("Lane Follow").toStdString().c_str() : tr("Laneless").toStdString().c_str());
-    static char _strLatControlMode[128]="";
-    if (strcmp(strLatControlMode, _strLatControlMode)) ui_draw_text_a(s, x + dxGap + 15, y + 120, strLatControlMode, 30, COLOR_WHITE, BOLD);
-    strcpy(_strLatControlMode, strLatControlMode);
+    //char strLatControlMode[128] = "";
+    //int useLaneLineSpeed = Params().getInt("UseLaneLineSpeed");
+    //strcpy(strLatControlMode, (useLaneLineSpeed > 0) ? tr("Lane Follow").toStdString().c_str() : tr("Laneless").toStdString().c_str());
+    //static char _strLatControlMode[128] = "";
+    //if (strcmp(strLatControlMode, _strLatControlMode)) ui_draw_text_a(s, x + dxGap + 15, y + 120, strLatControlMode, 30, COLOR_WHITE, BOLD);
+    //strcpy(_strLatControlMode, strLatControlMode);
 
     dxGap -= 60;
     if (s->show_gap_info > 0) {
@@ -1075,9 +1068,58 @@ void DrawApilot::drawGapInfo(const UIState* s, int x, int y) {
     if (s->show_gap_info >= 0) {
         ui_draw_text(s, x + dxGap + 15 + 60, y + 60, str, 50, COLOR_WHITE, BOLD);
     }
+    //static int _gap1 = 0;
+    //if (_gap1 != gap1) ui_draw_text_a(s, x + dxGap + 15 + 60, y + 60, str, 50, COLOR_WHITE, BOLD);
+    //_gap1 = gap1;
+}
+void DrawApilot::drawGapInfo2(const UIState* s, int x, int y) {
+    char    str[128];
+    int     gap = Params().getInt("LongitudinalPersonality") + 1;// lp.getCruiseGap();
+    char    strDrivingMode[128];
+    int drivingMode = Params().getInt("AccelerationProfile"); //HW: controls_state.getMyDrivingMode();
+    if (drivingMode == 0) { // apilot driving mode
+        int myDrivingMode = Params().getInt("MyDrivingMode");
+        switch (myDrivingMode) {
+        case 1: strcpy(strDrivingMode, tr("ECO").toStdString().c_str()); break;
+        case 2: strcpy(strDrivingMode, tr("SAFE").toStdString().c_str()); break;
+        case 3: strcpy(strDrivingMode, tr("NORM").toStdString().c_str()); break;
+        case 4: strcpy(strDrivingMode, tr("HIGH").toStdString().c_str()); break;
+        default: strcpy(strDrivingMode, tr("ERRM").toStdString().c_str()); break;
+        }
+    }
+    else { // frogpilot mode..
+        switch (drivingMode)
+        {
+        case 1: strcpy(strDrivingMode, "ECO"); break;
+        case 2: strcpy(strDrivingMode, "NOR"); break;
+        case 3: strcpy(strDrivingMode, "SPT"); break;
+        default:
+            sprintf(strDrivingMode, "ERR%d", drivingMode); break;
+            //strcpy(strDrivingMode, "ERR"); break;
+        }
+    }
+
+    int dx = x + 50;
+    int dy = y + 110;
+    ui_draw_text(s, dx, dy, strDrivingMode, 30, COLOR_WHITE, BOLD);
+    static char _strDrivingMode[128] = "";
+    if (strcmp(strDrivingMode, _strDrivingMode)) ui_draw_text_a(s, dx, dy, strDrivingMode, 30, COLOR_WHITE, BOLD);
+    strcpy(_strDrivingMode, strDrivingMode);
+
+    char strLatControlMode[128] = "";
+    int useLaneLineSpeed = Params().getInt("UseLaneLineSpeed");
+    strcpy(strLatControlMode, (useLaneLineSpeed > 0) ? tr("Lane Follow").toStdString().c_str() : tr("Laneless").toStdString().c_str());
+    static char _strLatControlMode[128] = "";
+    if (strcmp(strLatControlMode, _strLatControlMode)) ui_draw_text_a(s, dx, dy, strLatControlMode, 30, COLOR_WHITE, BOLD);
+    strcpy(_strLatControlMode, strLatControlMode);
+
+    dx = x + 220;
+    dy = y + 77;
+    sprintf(str, "%d", gap);
+    ui_draw_text(s, dx, dy, str, 40, COLOR_WHITE, BOLD);
     static int _gap1 = 0;
-    if (_gap1 != gap1) ui_draw_text_a(s, x + dxGap + 15 + 60, y + 60, str, 50, COLOR_WHITE, BOLD);
-    _gap1 = gap1;
+    if (_gap1 != gap) ui_draw_text_a(s, dx, dy, str, 40, COLOR_WHITE, BOLD);
+    _gap1 = gap;
 }
 
 void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
@@ -1111,10 +1153,14 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
         //bool long_control = 1;// scc_smoother.getLongControl();
 
         // kph
-        //const auto lp = sm["longitudinalPlan"].getLongitudinalPlan();
+        const auto lp = sm["longitudinalPlan"].getLongitudinalPlan();
         float cruiseMaxSpeed = controls_state.getVCruiseCluster();// scc_smoother.getCruiseMaxSpeed();
         float applyMaxSpeed = controls_state.getVCruise();// HW: controls_state.getVCruiseOut();// scc_smoother.getApplyMaxSpeed();
-        float curveSpeed = 0;//HW: controls_state.getCurveSpeed();
+        float curveSpeed = 0.0;
+        float lpSpeed = lp.getSpeeds()[0] * (s->scene.is_metric ? MS_TO_KPH : MS_TO_MPH);//HW: controls_state.getCurveSpeed();
+        auto carstate = sm["carState"].getCarState();
+        float vCluRatio = carstate.getVCluRatio();
+        vCluRatio = (vCluRatio > 0.5) ? vCluRatio : 1.0;
         cruiseAdjustment = s->scene.adjusted_cruise * 0.1 + cruiseAdjustment * 0.9;
         bool speedCtrlActive = false;
         //if (curveSpeed < 0) {
@@ -1124,6 +1170,10 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
         if (cruiseAdjustment > 0.5) {
             //speedCtrlActive = true;
             curveSpeed = cruiseAdjustment; // applyMaxSpeed - cruiseAdjustment;
+        }
+        if (lpSpeed < curveSpeed - 2.0) {
+            curveSpeed = lpSpeed / vCluRatio;
+            speedCtrlActive = true;
         }
 
         //float xCruiseTarget = lp.getXCruiseTarget() * 3.6;
@@ -1250,6 +1300,7 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
                 ui_draw_text(s, bx + 140, by + 110, str, 50, (speedCtrlActive) ? COLOR_RED : COLOR_YELLOW, BOLD, 1.0, 5.0, COLOR_BLACK, COLOR_BLACK);
             }
         }
+        drawGapInfo2(s, bx, by);
 
         bx = x - 200;
         by = y + 250;
@@ -1299,7 +1350,7 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
             case 2: ui_draw_image(s, { bx - icon_size / 2, by - icon_size / 2, icon_size, icon_size }, "ic_turn_r", 1.0f); break;
             case 3: ui_draw_image(s, { bx - icon_size / 2, by - icon_size / 2, icon_size, icon_size }, "ic_lane_change_l", 1.0f); break;
             case 4: ui_draw_image(s, { bx - icon_size / 2, by - icon_size / 2, icon_size, icon_size }, "ic_lane_change_r", 1.0f); break;
-            case 5: ui_draw_text(s, bx, by + 20, "U턴", 35, COLOR_WHITE, BOLD, 0.0f, 0.0f); break;
+            case 5: ui_draw_image(s, { bx - icon_size / 2, by - icon_size / 2, icon_size, icon_size }, "ic_turn_u", 1.0f); break;
             case 35: ui_draw_text(s, bx, by + 20, "좌측고가 진입", 35, COLOR_WHITE, BOLD, 0.0f, 0.0f); break;
             case 43: ui_draw_text(s, bx, by + 20, "지하차도 우측", 35, COLOR_WHITE, BOLD, 0.0f, 0.0f); break;
             case 48: ui_draw_text(s, bx, by + 20, "휴게소", 35, COLOR_WHITE, BOLD, 0.0f, 0.0f); break;
@@ -1313,7 +1364,7 @@ void DrawApilot::drawSpeed(const UIState* s, int x, int y) {
             ui_draw_image(s, { bx - 60, by - 50, 120, 150 }, "ic_road_speed", 1.0f);
             sprintf(str, "%d", roadLimitSpeed);
             ui_draw_text(s, bx, by + 75, str, 50, COLOR_BLACK, BOLD, 0.0f, 0.0f);
-        }
+        }        
     }
 }
 void DrawApilot::drawTurnInfo(const UIState* s, int x, int y) {
@@ -1783,6 +1834,7 @@ void DrawApilot::drawLeadApilot(const UIState* s) {
 #include <net/if.h>
 #include <arpa/inet.h>
 char ip_address[64] = "";
+QString gitBranch = "branch";
 void read_ip_address() {
     int     fd;
     struct ifreq ifr;
@@ -1811,9 +1863,12 @@ void DrawApilot::drawDeviceState(UIState* s, bool show) {
     float cpuTemp = 0.f;
     //float gpuTemp = 0.f;
 
-    static int read_ip_count = 100;
-    if(read_ip_count == 100) read_ip_address();
-    if (read_ip_count-- < 0) read_ip_count = 100;
+    static int read_ip_count = 60;
+    if (read_ip_count == 60) {
+        read_ip_address();
+        gitBranch = QString::fromStdString(Params().get("GitBranch"));
+    }
+    if (read_ip_count-- < 0) read_ip_count = 60;
     nvgTextAlign(s->vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
 
     if (std::size(cpuTempC) > 0) {
@@ -1836,7 +1891,7 @@ void DrawApilot::drawDeviceState(UIState* s, bool show) {
         ui_draw_text(s, s->fb_w - 20, 120, str, 35, textColor, BOLD);
     }
     nvgTextAlign(s->vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
-    ui_draw_text(s, s->fb_w - 20, s->fb_h - 15, ip_address, 30, COLOR_WHITE, BOLD, 0.0f, 0.0f);
+    ui_draw_text(s, s->fb_w - 20, s->fb_h - 15, (read_ip_count < 30)? ip_address:gitBranch.toStdString().c_str(), 30, COLOR_WHITE, BOLD, 0.0f, 0.0f);
 
 }
 void DrawApilot::drawDebugText(UIState* s, bool show) {
@@ -2031,6 +2086,7 @@ void ui_nvg_init(UIState *s) {
   {"ic_bsd_r", "../assets/images/bsd_r.png"},
   {"ic_turn_l", "../assets/images/turn_l.png"},
   {"ic_turn_r", "../assets/images/turn_r.png"},
+  {"ic_turn_u", "../assets/images/turn_u.png"},
   {"ic_blinker_l", "../assets/images/blink_l.png"},
   {"ic_blinker_r", "../assets/images/blink_r.png"},
   {"ic_speed_bg", "../assets/images/speed_bg.png"},

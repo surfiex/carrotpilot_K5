@@ -48,6 +48,7 @@ Networking::Networking(QWidget* parent, bool show_advanced) : QFrame(parent) {
 
   an = new AdvancedNetworking(this, wifi);
   connect(an, &AdvancedNetworking::backPress, [=]() { main_layout->setCurrentWidget(wifiScreen); });
+  connect(an, &AdvancedNetworking::requestWifiScreen, [=]() { main_layout->setCurrentWidget(wifiScreen); });
   main_layout->addWidget(an);
 
   QPalette pal = palette();
@@ -185,13 +186,24 @@ AdvancedNetworking::AdvancedNetworking(QWidget* parent, WifiManager* wifi): QWid
   });
   list->addItem(meteredToggle);
 
-  // Disable onroad uploads toggle
-  const bool disableOnroadUploads = params.getBool("DisableOnroadUploads");
-  disableOnroadUploadsToggle = new ToggleControl(tr("Disable Onroad Uploads"), tr("Prevent large data uploads when onroad."), "", disableOnroadUploads);
-  QObject::connect(disableOnroadUploadsToggle, &ToggleControl::toggleFlipped, [=](bool state) {
-    params.putBool("DisableOnroadUploads", state);
+  // Hidden Network
+  hiddenNetworkButton = new ButtonControl(tr("Hidden Network"), tr("CONNECT"));
+  connect(hiddenNetworkButton, &ButtonControl::clicked, [=]() {
+    QString ssid = InputDialog::getText(tr("Enter SSID"), this, "", false, 1);
+    if (!ssid.isEmpty()) {
+      QString pass = InputDialog::getText(tr("Enter password"), this, tr("for \"%1\"").arg(ssid), true, -1);
+      Network hidden_network;
+      hidden_network.ssid = ssid.toUtf8();
+      if (!pass.isEmpty()) {
+        hidden_network.security_type = SecurityType::WPA;
+        wifi->connect(hidden_network, pass);
+      } else {
+        wifi->connect(hidden_network);
+      }
+      emit requestWifiScreen();
+    }
   });
-  list->addItem(disableOnroadUploadsToggle);
+  list->addItem(hiddenNetworkButton);
 
   // Set initial config
   wifi->updateGsmSettings(roamingEnabled, QString::fromStdString(params.get("GsmApn")), metered);

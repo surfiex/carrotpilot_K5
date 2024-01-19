@@ -24,6 +24,9 @@ enum FrogPilotEvents @0xf35cc4560bbf6ec2 {
   torqueNNLoad @3;
   turningLeft @4;
   turningRight @5;
+
+  # Random Events
+  firefoxSteerSaturated @6;
 }
 
 struct FrogPilotLateralPlan @0xda96579883444c35 {
@@ -46,6 +49,7 @@ struct FrogPilotLongitudinalPlan @0x80ae746ee2596b11 {
   slcSpeedLimit @9 :Float32;
   slcSpeedLimitOffset @10 :Float32;
   stoppedEquivalenceFactor @11 :Int16;
+  vtscControllingCurve @12 :Bool;
 }
 
 struct FrogPilotNavigation @0xa5cd762cd951a455 {

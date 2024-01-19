@@ -402,6 +402,7 @@ def main():
   roadcate = 7    # roadCategory, 0,1: highway,
   nLaneCount = 0
   szNearDirName = ""
+  szFarDirName = ""
   szTBTMainText = ""
   szTBTMainTextNext = ""
   nGoPosDist = 0
@@ -486,6 +487,7 @@ def main():
 
       while True:
 
+        showDebugUI = Params().get_bool("ShowDebugUI")
         ret = server.udp_recv(sock, sockWaitTime)
 
         try:
@@ -640,6 +642,7 @@ def main():
           nTBTTurnTypeNext = int(server.get_apilot_val("nTBTTurnTypeNext", nTBTTurnTypeNext))
           nTBTNextRoadWidth = int(server.get_apilot_val("nTBTNextRoadWidth", nTBTNextRoadWidth))          
           szNearDirName = server.get_apilot_val("szNearDirName", szNearDirName)
+          szFarDirName = server.get_apilot_val("szFarDirName", szFarDirName)
           szTBTMainText = server.get_apilot_val("szTBTMainText", szTBTMainText)
           szTBTMainTextNext = server.get_apilot_val("szTBTMainTextNext", szTBTMainTextNext)
           nSdiType = int(server.get_apilot_val("nSdiType", nSdiType))
@@ -779,7 +782,9 @@ def main():
         dat.roadLimitSpeed.xRoadLimitSpeed = int(xRoadLimitSpeed)
         if xRoadLimitSpeed > 0:
           dat.roadLimitSpeed.roadLimitSpeed = int(xRoadLimitSpeed)
-        dat.roadLimitSpeed.xRoadName = xRoadName + "[{}]".format(nTBTNextRoadWidth) + "[{}]".format(road_category_map.get(roadcate,"X")) + sdiDebugText
+        dat.roadLimitSpeed.xRoadName = xRoadName
+        if showDebugUI:
+          dat.roadLimitSpeed.xRoadName += ("[{}]".format(nTBTNextRoadWidth) + "[{}]".format(road_category_map.get(roadcate,"X")) + sdiDebugText)
         #print(dat.roadLimitSpeed.xRoadName)
 
         dat.roadLimitSpeed.xCmd = "" if xCmd is None else xCmd
@@ -793,8 +798,10 @@ def main():
         instruction.timeRemaining = nGoPosTime
         instruction.speedLimit = nRoadLimitSpeed / 3.6 if nRoadLimitSpeed > 0 else 0
         instruction.maneuverDistance = float(nTBTDist)
-        instruction.maneuverSecondaryText = szNearDirName if szNearDirName is not None else ""
-        instruction.maneuverPrimaryText = szTBTMainText if szTBTMainText is not None else ""
+        instruction.maneuverSecondaryText = szNearDirName
+        if len(szFarDirName):
+          instruction.maneuverSecondaryText += "[{}]".format(szFarDirName)
+        instruction.maneuverPrimaryText = szTBTMainText
         instruction.timeRemainingTypical = nGoPosTime
 
         instruction.maneuverType = navType

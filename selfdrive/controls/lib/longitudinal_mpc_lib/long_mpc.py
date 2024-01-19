@@ -272,7 +272,6 @@ def gen_long_ocp():
 
 class LongitudinalMpc:
   def __init__(self, mode='acc'):
-    self.mode = mode
     self.trafficStopDistanceAdjust = 1.8
     self.aChangeCost = 200
     self.aChangeCostStart = 40
@@ -299,15 +298,17 @@ class LongitudinalMpc:
     self.mySafeFactor = 1.0
     self.stopping_count = 0
 
-    self.solver = AcadosOcpSolverCython(MODEL_NAME, ACADOS_SOLVER_TYPE, N)
-    self.reset()
-    self.source = SOURCES[2]
-
     # FrogPilot variables
     self.safe_obstacle_distance = 0
     self.safe_obstacle_distance_stock = 0
     self.stopped_equivalence_factor = 0
     self.t_follow = 0
+    self.t_follow_offset = 1
+
+    self.mode = mode
+    self.solver = AcadosOcpSolverCython(MODEL_NAME, ACADOS_SOLVER_TYPE, N)
+    self.reset()
+    self.source = SOURCES[2]
 
   def reset(self):
     # self.solver = AcadosOcpSolverCython(MODEL_NAME, ACADOS_SOLVER_TYPE, N)
@@ -364,6 +365,7 @@ class LongitudinalMpc:
 
   def set_weights(self, prev_accel_constraint=True, custom_personalities=False, aggressive_jerk=0.5, standard_jerk=1.0, relaxed_jerk=1.0, personality=log.LongitudinalPersonality.standard):
     jerk_factor = get_jerk_factor(custom_personalities, aggressive_jerk, standard_jerk, relaxed_jerk, personality)
+    jerk_factor /= np.mean(self.t_follow_offset)
     if self.mode == 'acc':
       a_change_cost = self.aChangeCost if prev_accel_constraint else self.aChangeCostStart
       cost_weights = [X_EGO_OBSTACLE_COST, X_EGO_COST, V_EGO_COST, A_EGO_COST, jerk_factor * a_change_cost, jerk_factor * J_EGO_COST]
@@ -433,7 +435,6 @@ class LongitudinalMpc:
 
   def update(self, sm, reset_state, carrot_light_detect, radarstate, v_cruise, x, v, a, j, aggressive_acceleration, increased_stopping_distance, smoother_braking, custom_personalities, aggressive_follow, standard_follow, relaxed_follow, personality=log.LongitudinalPersonality.standard):
     t_follow = get_T_FOLLOW(custom_personalities, aggressive_follow, standard_follow, relaxed_follow, personality)
-    self.t_follow = t_follow
     #self.debugLongText = "v_cruise ={:.1f}".format(v_cruise)
     carstate = sm['carState']
     model = sm['modelV2']
@@ -442,6 +443,11 @@ class LongitudinalMpc:
     v_ego = self.x0[1]
     a_ego = self.x0[2]
     self.trafficState = TrafficState.off
+    # carrot
+    self.comfort_brake = COMFORT_BRAKE
+    applyStopDistance = self.stop_distance  * (2.0 - self.mySafeFactor)
+    t_follow = self.update_tf(v_ego, t_follow)
+    self.t_follow = t_follow
     
     self.status = radarstate.leadOne.status or radarstate.leadTwo.status
 
@@ -451,20 +457,15 @@ class LongitudinalMpc:
     # Offset by FrogAi for FrogPilot for a more natural takeoff with a lead
     if aggressive_acceleration:
       distance_factor = np.maximum(1, lead_xv_0[:,0] - (lead_xv_0[:,1] * t_follow))
-      standstill_offset = max(self.stop_distance + increased_stopping_distance - v_ego, 0)
-      t_follow_offset = np.clip((lead_xv_0[:,1] - v_ego) + standstill_offset, 1, distance_factor)
-      t_follow = t_follow / t_follow_offset[0]
+      standstill_offset = np.clip(self.stop_distance + increased_stopping_distance - v_ego, 0, lead_xv_0[:,1] - v_ego)
+      self.t_follow_offset = np.clip((lead_xv_0[:,1] - v_ego) + standstill_offset, 1, distance_factor)
+      t_follow = t_follow / self.t_follow_offset[0]
 
     # Offset by FrogAi for FrogPilot for a more natural approach to a slower lead
     if smoother_braking:
       distance_factor = np.maximum(1, lead_xv_0[:,0] - (lead_xv_0[:,1] * t_follow))
       t_follow_offset = np.clip((v_ego - lead_xv_0[:,1]) - COMFORT_BRAKE, 1, distance_factor)
       t_follow = t_follow / t_follow_offset[0]
-
-    self.comfort_brake = COMFORT_BRAKE
-    applyStopDistance = self.stop_distance  * (2.0 - self.mySafeFactor)
-    t_follow = self.update_tf(v_ego, t_follow)
-
 
     # LongitudinalPlan variables for onroad driving insights
     if self.status:
@@ -489,6 +490,10 @@ class LongitudinalMpc:
       v_cruise, stop_x, self.mode = self.update_apilot(carstate, radarstate, model, v_cruise)
       self.debugLongText = "I{:.1f} {},{},{:.1f},tf={:.2f},{:.1f},stop={:.1f},{:.1f},xv={:.0f},{:.0f}".format(
         increased_stopping_distance, str(self.xState), str(self.trafficState), v_cruise*3.6, t_follow[0], t_follow[0]*v_ego+6.0, stop_x, self.stopDist,x[-1],v[-1])
+      # TODO: e2eStop시 속도증가된는 문제발생, 일단 속도제한해보자.. 왜그러지? cruise_obstacle이 더 작을텐데...
+      if self.xState == XState.e2eStop:
+        self.max_a = 0.0
+
     else:
       stop_x = 1000.0
       self.xState = XState.e2eCruise

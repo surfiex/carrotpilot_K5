@@ -92,9 +92,11 @@ OnroadWindow::OnroadWindow(QWidget *parent) : QWidget(parent), scene(uiState()->
 }
 
 void OnroadWindow::updateState(const UIState &s) {
-  if (!s.scene.started) {
-    return;
-  }
+    static int _current_carrot_display_prev = 0, _display_time_count = 0;
+    if (!s.scene.started) {
+        _current_carrot_display_prev = -1;
+      return;
+    }
 
   QColor bgColor = bg_colors[s.status];
   Alert alert = Alert::get(*(s.sm), s.scene.started_frame);
@@ -114,6 +116,67 @@ void OnroadWindow::updateState(const UIState &s) {
     bg = bgColor;
     update();
   }
+
+  Params params = Params();
+  static int updateSeq = 0;
+  int carrot_record = 0;
+  int carrot_display = 0;
+  if (updateSeq++ > 100) updateSeq = 0;
+  if (updateSeq % 20 == 0) {
+      int temp = std::atoi(params.get("CarrotRecord").c_str());
+      if (temp != 0) {
+          carrot_record = temp;
+          params.putNonBlocking("CarrotRecord", "0");
+      }
+      temp = std::atoi(params.get("CarrotDisplay").c_str());
+      if (temp != 0) {
+          carrot_display = temp;
+          params.putNonBlocking("CarrotDisplay", "0");
+      }
+  }
+
+  if (carrot_record > 0) {
+      switch (carrot_record) {
+      case 1: nvg->CarrotRecorderStart();  printf("Screen Record Started...\n"); break;
+      case 2: nvg->CarrotRecorderStop(); printf("Screen Record Stopped...\n"); break;
+      case 3: nvg->CarrotRecorderToggle(); printf("Screen Record Toggle..\n"); break;
+      }
+  }
+
+  extern int _current_carrot_display;
+  if (true) { //carrot_display > 0) {
+      if (carrot_display == 5) _current_carrot_display = (_current_carrot_display % 4) + 1;
+      else if(carrot_display > 0) _current_carrot_display = carrot_display;
+      if (map == nullptr && _current_carrot_display > 2) _current_carrot_display = 1;
+      //printf("_current_carrot_display2=%d\n", _current_carrot_display);
+      //if (offroad) _current_carrot_display = 1;
+      switch (_current_carrot_display) {
+      case 1: // default
+          if (map != nullptr) map->setVisible(false);
+          if (_current_carrot_display_prev != _current_carrot_display) _display_time_count = 100; // 100: about 5 seconds
+          if (_display_time_count-- <= 0) _current_carrot_display = 2; // change to road view
+          break;
+      case 2: // road          
+          if (map != nullptr) map->setVisible(false);
+          break;
+      case 3: // map
+          if (map == nullptr) _current_carrot_display = 1;
+          else {
+              map->setVisible(true);
+              map->setFixedWidth(topWidget(this)->width() / 2 - UI_BORDER_SIZE);
+          }
+          break;
+      case 4: // fullmap
+          if (map == nullptr) _current_carrot_display = 1;
+          else {
+              map->setVisible(true);
+              map->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+              map->setFixedWidth(topWidget(this)->width() - UI_BORDER_SIZE);
+          }
+          break;
+      }
+      _current_carrot_display_prev = _current_carrot_display;
+  }
 }
 
 void OnroadWindow::mousePressEvent(QMouseEvent* e) {
@@ -125,33 +188,42 @@ void OnroadWindow::mousePressEvent(QMouseEvent* e) {
 
   // Change cruise control increments button
   QRect maxSpeedRect(7, 25, 225, 225);
-  bool isMaxSpeedClicked = maxSpeedRect.contains(e->pos());
+  bool isMaxSpeedClicked = maxSpeedRect.contains(e->pos()) && (uiState()->show_mode == 0);
 
   // Hide speed button
   QRect speedRect(rect().center().x() - 175, 50, 350, 350);
-  bool isSpeedClicked = speedRect.contains(e->pos());
+  bool isSpeedClicked = speedRect.contains(e->pos()) && (uiState()->show_mode == 0);
 
   // Speed limit offset button
   const QRect speedLimitRect(7, 250, 225, 225);
-  const bool isSpeedLimitClicked = speedLimitRect.contains(e->pos());
+  const bool isSpeedLimitClicked = speedLimitRect.contains(e->pos()) && (uiState()->show_mode == 0);
 
   if (isMaxSpeedClicked || isSpeedClicked || isSpeedLimitClicked) {
     // Check if the click was within the max speed area
     if (isMaxSpeedClicked) {
-      reverseCruise = !params.getBool("ReverseCruise");
-      params.putBoolNonBlocking("ReverseCruise", reverseCruise);
-      paramsMemory.putBoolNonBlocking("FrogPilotTogglesUpdated", true);
+      bool currentReverseCruise = !params.getBool("ReverseCruise");
+      params.putBoolNonBlocking("ReverseCruise", currentReverseCruise);
+      if (!params.getBool("QOLControls")) {
+        params.putBoolNonBlocking("QOLControls", true);
+      }
     // Check if the click was within the speed text area
     } else if (isSpeedClicked) {
-      speedHidden = !params.getBool("HideSpeed");
-      params.putBoolNonBlocking("HideSpeed", speedHidden);
+      bool currentHideSpeed = !params.getBool("HideSpeed");
+      params.putBoolNonBlocking("HideSpeed", currentHideSpeed);
+      if (!params.getBool("QOLVisuals")) {
+        params.putBoolNonBlocking("QOLVisuals", true);
+      }
     } else {
-      showSLCOffset = !params.getBool("ShowSLCOffset");
-      params.putBoolNonBlocking("ShowSLCOffset", showSLCOffset);
+      bool currentShowSLCOffset = !params.getBool("ShowSLCOffset");
+      params.putBoolNonBlocking("ShowSLCOffset", currentShowSLCOffset);
+      if (!params.getBool("QOLVisuals")) {
+        params.putBoolNonBlocking("QOLVisuals", true);
+      }
     }
     widgetClicked = true;
+    paramsMemory.putBoolNonBlocking("FrogPilotTogglesUpdated", true);
   // If the click wasn't for anything specific, change the value of "ExperimentalMode"
-  } else if (scene.experimental_mode_via_press && e->pos() != timeoutPoint) {
+  } else if (scene.experimental_mode_via_screen && e->pos() != timeoutPoint) {
     if (clickTimer.isActive()) {
       clickTimer.stop();
       if (scene.conditional_experimental) {
@@ -166,20 +238,25 @@ void OnroadWindow::mousePressEvent(QMouseEvent* e) {
     }
     widgetClicked = true;
   }
-
 #ifdef ENABLE_MAPS
   if (map != nullptr && !widgetClicked) {
     // Switch between map and sidebar when using navigate on openpilot
-    bool sidebarVisible = geometry().x() > 0;
-    bool show_map = uiState()->scene.navigate_on_openpilot ? sidebarVisible : !sidebarVisible;
-    if (!scene.experimental_mode_via_press || map->isVisible()) {
-      map->setVisible(show_map && !map->isVisible());
-    }
+    //bool sidebarVisible = geometry().x() > 0;
+    //bool show_map = uiState()->scene.navigate_on_openpilot ? sidebarVisible : !sidebarVisible;
+    //map->setVisible(show_map && !map->isVisible());
+    //if (!scene.experimental_mode_via_screen || map->isVisible()) {
+    //  map->setVisible(show_map && !map->isVisible());
+    //}
   }
 #endif
+
   // propagation event to parent(HomeWindow)
   if (!widgetClicked) {
-    QWidget::mousePressEvent(e);
+      extern int _current_carrot_display;
+      _current_carrot_display = (_current_carrot_display % 3) + 1;  // 4번: full map은 안보여줌.
+      printf("_current_carrot_display1=%d\n", _current_carrot_display);
+
+      QWidget::mousePressEvent(e);
   }
 }
 
@@ -195,7 +272,11 @@ void OnroadWindow::offroadTransition(bool offroad) {
       QObject::connect(nvg->map_settings_btn_bottom, &MapSettingsButton::clicked, m, &MapPanel::toggleMapSettings);
       nvg->map_settings_btn->setEnabled(true);
 
-      m->setFixedWidth(topWidget(this)->width() / 2 - UI_BORDER_SIZE);
+      if (scene.full_map) {
+        m->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+      } else {
+        m->setFixedWidth(topWidget(this)->width() / 2 - UI_BORDER_SIZE);
+      }
       split->insertWidget(0, m);
 
       // hidden by default, made visible when navRoute is published
@@ -375,10 +456,10 @@ void ExperimentalButton::changeMode() {
   Params paramsMemory = Params("/dev/shm/params");
 
   const auto cp = (*uiState()->sm)["carParams"].getCarParams();
-  bool can_change = hasLongitudinalControl(cp) && (params.getBool("ExperimentalModeConfirmed") || scene.experimental_mode_via_press);
+  bool can_change = hasLongitudinalControl(cp) && (params.getBool("ExperimentalModeConfirmed") || scene.experimental_mode_via_screen);
   if (can_change) {
     if (scene.conditional_experimental) {
-      const int override_value = (scene.conditional_status >= 1 && scene.conditional_status <= 4) ? 0 : scene.conditional_status >= 5 ? 3 : 4;
+      int override_value = (scene.conditional_status >= 1 && scene.conditional_status <= 4) ? 0 : scene.conditional_status >= 5 ? 3 : 4;
       paramsMemory.putIntNonBlocking("ConditionalStatus", override_value);
     } else {
       params.putBoolNonBlocking("ExperimentalMode", !experimental_mode);
@@ -396,13 +477,20 @@ void ExperimentalButton::updateState(const UIState &s, bool leadInfo) {
   }
 
   // FrogPilot variables
+  firefoxRandomEventTriggered = scene.current_random_event == 1;
   rotatingWheel = scene.rotating_wheel;
   wheelIcon = (s.show_mode == 0)?scene.wheel_icon:0;
 
   y_offset = leadInfo ? 10 : 0;
 
+  if (firefoxRandomEventTriggered) {
+    static int rotationDegree = 0;
+    rotationDegree = (rotationDegree + 36) % 360;
+    steeringAngleDeg = rotationDegree;
+    wheelIcon = 7;
+    update();
   // Update the icon so the steering wheel rotates in real time
-  if (rotatingWheel && steeringAngleDeg != scene.steering_angle_deg) {
+  } else if (rotatingWheel && steeringAngleDeg != scene.steering_angle_deg) {
     steeringAngleDeg = scene.steering_angle_deg;
     update();
   }
@@ -415,14 +503,14 @@ void ExperimentalButton::paintEvent(QPaintEvent *event) {
   QPixmap img = wheelIcon ? engage_img : (experimental_mode ? experimental_img : engage_img);
 
   QColor background_color = wheelIcon && !isDown() && engageable ?
+      (scene.always_on_lateral_active ? QColor(10, 186, 181, 255) :
       (scene.conditional_status == 1 ? QColor(255, 246, 0, 255) :
       (experimental_mode ? QColor(218, 111, 37, 241) :
-      (scene.navigate_on_openpilot ? QColor(49, 161, 238, 255) : QColor(0, 0, 0, 166)))) :
-      (scene.always_on_lateral_active ? QColor(10, 186, 181, 255) :
-      QColor(0, 0, 0, 166));
+      (scene.navigate_on_openpilot ? QColor(49, 161, 238, 255) : QColor(0, 0, 0, 166))))) :
+      QColor(0, 0, 0, 166);
 
   if (!scene.show_driver_camera) {
-    if (rotatingWheel) {
+    if (rotatingWheel || firefoxRandomEventTriggered) {
       drawIconRotate(p, QPoint(btn_size / 2, btn_size / 2 + y_offset), img, background_color, (isDown() || (!engageable && !scene.always_on_lateral_active)) ? 0.6 : 1.0, steeringAngleDeg);
     } else {
       drawIcon(p, QPoint(btn_size / 2, btn_size / 2 + y_offset), img, background_color, (isDown() || (!engageable && !scene.always_on_lateral_active)) ? 0.6 : 1.0);
@@ -507,8 +595,8 @@ void AnnotatedCameraWidget::updateState(const UIState &s) {
     speedLimit = speedLimit - (showSLCOffset ? slcSpeedLimitOffset : 0);
   }
 
-  has_us_speed_limit = (nav_alive && speed_limit_sign == cereal::NavInstruction::SpeedLimitSign::MUTCD) || slcSpeedLimit;
-  has_eu_speed_limit = (nav_alive && speed_limit_sign == cereal::NavInstruction::SpeedLimitSign::VIENNA);
+  has_us_speed_limit = (nav_alive && speed_limit_sign == cereal::NavInstruction::SpeedLimitSign::MUTCD) || (slcSpeedLimit && !useViennaSLCSign);
+  has_eu_speed_limit = (nav_alive && speed_limit_sign == cereal::NavInstruction::SpeedLimitSign::VIENNA) || (slcSpeedLimit && useViennaSLCSign);
   is_metric = s.scene.is_metric;
   speedUnit =  s.scene.is_metric ? tr("km/h") : tr("mph");
   hideBottomIcons = (cs.getAlertSize() != cereal::ControlsState::AlertSize::NONE || customSignals && (turnSignalLeft || turnSignalRight)) || showDriverCamera;
@@ -564,7 +652,8 @@ void AnnotatedCameraWidget::drawHud(QPainter &p) {
   QRect set_speed_rect(QPoint(60 + (default_size.width() - set_speed_size.width()) / 2, 45), set_speed_size);
   if (is_cruise_set && cruiseAdjustment) {
     float transition = qBound(0.0f, 4.0f * (cruiseAdjustment / setSpeed), 1.0f);
-    QColor min = whiteColor(75), max = redColor(75);
+    QColor min = whiteColor(75);
+    QColor max = vtscControllingCurve ? redColor(75) : greenColor(75);
 
     p.setPen(QPen(QColor::fromRgbF(
       min.redF()   + transition * (max.redF()   - min.redF()),
@@ -647,7 +736,7 @@ void AnnotatedCameraWidget::drawHud(QPainter &p) {
   }
 
   // current speed
-  if (!speedHidden) {
+  if (!hideSpeed) {
     p.setFont(InterFont(176, QFont::Bold));
     drawText(p, rect().center().x(), 210, speedStr);
     p.setFont(InterFont(66));
@@ -1066,7 +1155,8 @@ void AnnotatedCameraWidget::paintEvent(QPaintEvent *event) {
     update_model(s, model, sm["uiPlan"].getUiPlan());
     if(s->show_mode == 0) drawLaneLines(painter, s);
 
-    if (s->scene.longitudinal_control && sm.rcv_frame("radarState") > s->scene.started_frame) {
+    //if (s->scene.longitudinal_control && sm.rcv_frame("radarState") > s->scene.started_frame) {
+    if (sm.rcv_frame("radarState") > s->scene.started_frame) {
       auto radar_state = sm["radarState"].getRadarState();
       update_leads(s, radar_state, model.getPosition());
       auto lead_one = radar_state.getLeadOne();
@@ -1129,7 +1219,8 @@ void AnnotatedCameraWidget::paintEvent(QPaintEvent *event) {
 void AnnotatedCameraWidget::showEvent(QShowEvent *event) {
   CameraWidget::showEvent(event);
 
-  ui_update_params(uiState());
+  std::thread updateFrogPilotParams(ui_update_params, uiState());
+  updateFrogPilotParams.detach();
   prev_draw_t = millis_since_boot();
 }
 
@@ -1152,18 +1243,6 @@ void AnnotatedCameraWidget::initializeFrogPilotWidgets() {
   bottom_layout->addWidget(map_settings_btn_bottom);
 
   main_layout->addLayout(bottom_layout);
-
-  if (params.getBool("HideSpeed")) {
-    speedHidden = true;
-  }
-
-  if (params.getBool("ReverseCruise")) {
-    reverseCruise = true;
-  }
-
-  if (params.getBool("ShowSLCOffset")) {
-    showSLCOffset = true;
-  }
 
   // Custom themes configuration
   themeConfiguration = {
@@ -1210,6 +1289,7 @@ void AnnotatedCameraWidget::updateFrogPilotWidgets(QPainter &p) {
   customColors = scene.custom_colors;
   desiredFollow = scene.desired_follow;
   experimentalMode = scene.experimental_mode;
+  hideSpeed = scene.hide_speed;
   laneWidthLeft = scene.lane_width_left;
   laneWidthRight = scene.lane_width_right;
   leadInfo = scene.lead_info;
@@ -1218,8 +1298,10 @@ void AnnotatedCameraWidget::updateFrogPilotWidgets(QPainter &p) {
   obstacleDistance = scene.obstacle_distance;
   obstacleDistanceStock = scene.obstacle_distance_stock;
   onroadAdjustableProfiles = scene.personalities_via_screen;
+  reverseCruise = scene.reverse_cruise;
   roadNameUI = scene.road_name_ui;
   showDriverCamera = scene.show_driver_camera;
+  showSLCOffset = scene.show_slc_offset;
   slcOverridden = scene.speed_limit_overridden;
   slcOverriddenSpeed = scene.speed_limit_overridden_speed;
   slcSpeedLimit = scene.speed_limit;
@@ -1228,6 +1310,8 @@ void AnnotatedCameraWidget::updateFrogPilotWidgets(QPainter &p) {
   turnSignalLeft = scene.turn_signal_left;
   turnSignalRight = scene.turn_signal_right;
   useSI = scene.use_si;
+  useViennaSLCSign = scene.use_vienna_slc_sign;
+  vtscControllingCurve = true;
 
   if (!showDriverCamera) {
     if (leadInfo) {
@@ -1627,11 +1711,17 @@ void AnnotatedCameraWidget::drawStatusBar(QPainter &p) {
   QString screenSuffix = ". Double tap the screen to revert";
   QString wheelSuffix = ". Double press the \"LKAS\" button to revert";
 
+  newStatus = "";
   if (alwaysOnLateral) {
     newStatus = QString("Always On Lateral active") + (mapOpen ? "" : ". Press the \"Cruise Control\" button to disable");
   } else if (conditionalExperimental) {
     newStatus = conditionalStatusMap.contains(conditionalStatus) && status != STATUS_DISENGAGED ? conditionalStatusMap[conditionalStatus] : conditionalStatusMap[0];
   }
+  // Carrot
+  SubMaster& sm = *uiState()->sm;
+  auto controls_state = sm["controlsState"].getControlsState();
+  QString carrotStatus = QString::fromStdString(controls_state.getDebugText1().cStr());
+  if (carrotStatus.length() > 3) newStatus = carrotStatus;
 
   // Check if status has changed or if the road name is empty
   if (newStatus != lastShownStatus || roadName.isEmpty()) {

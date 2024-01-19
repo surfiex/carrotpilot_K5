@@ -145,7 +145,7 @@ class Track:
     aLeadK = float(lead_msg.a[0]) if useVisionMix else float(self.aLeadK)
     return {
       "dRel": float(self.dRel),
-      "yRel": float(self.yRel) if mixRadarInfo == 0 or self.yRel != 0 else float(-lead_msg.y[0]),
+      "yRel": float(self.yRel) if self.yRel != 0 else float(-lead_msg.y[0]),
       "vRel": float(self.vRel),
       "vLead": float(self.vLead),
       "vLeadK": float(self.vLeadK),

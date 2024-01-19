@@ -59,6 +59,7 @@ class CarState(CarStateBase):
     self.totalDistance = 0.0
     self.speedLimitDistance = 0
     self.lkas_previously_pressed = False
+    self.pcmCruiseGap = 0
 
   def update(self, cp, cp_cam):
     if self.CP.carFingerprint in CANFD_CAR:
@@ -123,6 +124,11 @@ class CarState(CarStateBase):
       ret.cruiseState.speed = cp_cruise.vl["SCC11"]["VSetDis"] * speed_conv
 
       ret.cruiseGap = cp_cruise.vl["SCC11"]["TauGapSet"]
+      if ret.cruiseGap != self.pcmCruiseGap:
+        self.pcmCruiseGap = ret.cruiseGap
+        self.personality_profile = self.pcmCruiseGap - 1 if self.pcmCruiseGap < 4 else 2
+        self.param.put_int("LongitudinalPersonality", self.personality_profile)
+
     # TODO: Find brake pressure
     ret.brake = 0
     ret.brakePressed = cp.vl["TCS13"]["DriverOverride"] == 2  # 2 includes regen braking by user on HEV/EV
@@ -249,24 +255,27 @@ class CarState(CarStateBase):
     if self.prev_main_buttons == 0 and self.main_buttons[-1] != 0:
       self.main_enabled = not self.main_enabled
     ## ajouatom: wheel gap distance setting
-    self.cruise_gap_count =  self.cruise_gap_count + 1 if self.prev_cruise_buttons == Buttons.GAP_DIST else 0
-    if self.personalities_via_wheel:
-      if self.cruise_buttons[-1] == Buttons.GAP_DIST and self.cruise_gap_count >= 70:
-        if self.cruise_gap_count == 70:
-          self.param.put_int_nonblocking("MyDrivingMode", Params().get_int("MyDrivingMode") % 4 + 1) # 1,2,3,4 (1:eco, 2:safe, 3:normal, 4:high speed)
-      elif self.prev_cruise_buttons == Buttons.GAP_DIST and self.cruise_buttons[-1] == Buttons.NONE and self.cruise_gap_count < 70:
-        # Sync with the onroad UI button
-        if self.param_memory.get_bool("PersonalityChangedViaUI"):
-          self.personality_profile = self.param.get_int("LongitudinalPersonality")
-          self.previous_personality_profile = self.personality_profile
-          self.param_memory.put_bool("PersonalityChangedViaUI", False)
+    if self.CP.openpilotLongitudinalControl:
+      self.cruise_gap_count =  self.cruise_gap_count + 1 if self.prev_cruise_buttons == Buttons.GAP_DIST else 0
+      if self.personalities_via_wheel:
+        if self.cruise_buttons[-1] == Buttons.GAP_DIST and self.cruise_gap_count >= 70:
+          if self.cruise_gap_count == 70:
+            self.param.put_int_nonblocking("MyDrivingMode", Params().get_int("MyDrivingMode") % 4 + 1) # 1,2,3,4 (1:eco, 2:safe, 3:normal, 4:high speed)
+        elif self.prev_cruise_buttons == Buttons.GAP_DIST and self.cruise_buttons[-1] == Buttons.NONE and self.cruise_gap_count < 70:
+          # Sync with the onroad UI button
+          if self.param_memory.get_bool("PersonalityChangedViaUI"):
+            self.personality_profile = self.param.get_int("LongitudinalPersonality")
+            self.previous_personality_profile = self.personality_profile
+            self.param_memory.put_bool("PersonalityChangedViaUI", False)
 
-        self.personality_profile = (self.previous_personality_profile + 2) % 3
+          self.personality_profile = (self.previous_personality_profile + 2) % 3
 
-        if self.personality_profile != self.previous_personality_profile and self.personality_profile >= 0:
-          self.param.put_int("LongitudinalPersonality", self.personality_profile)
-          self.param_memory.put_bool("PersonalityChangedViaWheel", True)
-          self.previous_personality_profile = self.personality_profile
+          if self.personality_profile != self.previous_personality_profile and self.personality_profile >= 0:
+            self.param.put_int("LongitudinalPersonality", self.personality_profile)
+            self.param_memory.put_bool("PersonalityChangedViaWheel", True)
+            self.previous_personality_profile = self.personality_profile
+
+
     # Toggle Experimental Mode from steering wheel function
     if ret.cruiseState.available and self.CP.flags & HyundaiFlags.HAS_LFA_BUTTON.value:
       lkas_pressed = cp.vl["BCM_PO_11"]["LFA_Pressed"]
@@ -391,7 +400,7 @@ class CarState(CarStateBase):
         self.previous_personality_profile = self.personality_profile
 
     # Toggle Experimental Mode from steering wheel function
-    if self.experimental_mode_via_press and ret.cruiseState.available:
+    if self.experimental_mode_via_lkas and ret.cruiseState.available:
       lkas_pressed = cp.vl[self.cruise_btns_msg_canfd]["LKAS_BTN"]
       if lkas_pressed and not self.lkas_previously_pressed:
         if self.conditional_experimental_mode:

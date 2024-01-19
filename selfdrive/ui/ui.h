@@ -194,15 +194,22 @@ typedef struct UIScene {
   bool driver_camera;
   bool enabled;
   bool experimental_mode;
-  bool experimental_mode_via_press;
+  bool experimental_mode_via_screen;
+  bool full_map;
+  bool hide_speed;
   bool lead_info;
   bool map_open;
   bool model_ui;
   bool mute_dm;
   bool personalities_via_screen;
+  bool quality_of_life_controls;
+  bool quality_of_life_visuals;
+  bool random_events;
+  bool reverse_cruise;
   bool road_name_ui;
   bool rotating_wheel;
   bool show_driver_camera;
+  bool show_slc_offset;
   bool show_fps;
   bool speed_limit_controller;
   bool speed_limit_overridden;
@@ -211,6 +218,8 @@ typedef struct UIScene {
   bool turn_signal_right;
   bool unlimited_road_ui_length;
   bool use_si;
+  bool use_vienna_slc_sign;
+  bool vtsc_controlling_curve;
   float adjusted_cruise;
   float lane_line_width;
   float lane_width_left;
@@ -228,6 +237,7 @@ typedef struct UIScene {
   int conditional_status;
   int current_random_event;
   int custom_colors;
+  int custom_icons;
   int custom_signals;
   int desired_follow;
   int obstacle_distance;
@@ -292,14 +302,15 @@ public:
   float show_path_width = 1.0;
   int show_plot_mode = 0;
 
+
+  int carrot_record = 0;
+  int carrot_display = 0;
+
 signals:
   void uiUpdate(const UIState &s);
   void offroadTransition(bool offroad);
   void primeChanged(bool prime);
   void primeTypeChanged(PrimeType prime_type);
-
-  // FrogPilot signals
-  void uiUpdateFrogPilotParams();
 
 private slots:
   void update();

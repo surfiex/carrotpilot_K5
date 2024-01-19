@@ -66,12 +66,30 @@ void HomeWindow::updateState(const UIState &s) {
     body->setEnabled(true);
     slayout->setCurrentWidget(body);
   }
+  extern int _current_carrot_display;
+  switch (_current_carrot_display) {
+  case 1: // default
+      sidebar->setVisible(true);
+      break;
+  case 2: // road
+      sidebar->setVisible(false);
+      break;
+  case 3: // map
+      sidebar->setVisible(false);
+      break;
+  case 4: // fullmap
+      sidebar->setVisible(false);
+      break;
+  }
+
 }
 
 void HomeWindow::offroadTransition(bool offroad) {
   body->setEnabled(false);
   sidebar->setVisible(offroad);
   if (offroad) {
+    extern int _current_carrot_display;
+    _current_carrot_display = 1;
     slayout->setCurrentWidget(home);
   } else {
     slayout->setCurrentWidget(onroad);
@@ -160,7 +178,7 @@ OffroadHome::OffroadHome(QWidget* parent) : QFrame(parent) {
     left_widget->addWidget(new DriveStats);
     left_widget->setStyleSheet("border-radius: 10px;");
 
-    left_widget->setCurrentIndex(uiState()->hasPrime() ? 0 : true ? 2 : 1);
+    left_widget->setCurrentIndex(params.getBool("DriveStats") ? 2 : uiState()->hasPrime() ? 0 : 1);
     connect(uiState(), &UIState::primeChanged, [=](bool prime) {
       left_widget->setCurrentIndex(prime ? 0 : 1);
     });
@@ -221,8 +239,8 @@ OffroadHome::OffroadHome(QWidget* parent) : QFrame(parent) {
   // Set the model name
   std::map<int, QString> MODEL_NAME {
     {0, "New Delhi"},
-    {1, "Blue Diamond V2"},
-    {2, "Blue Diamond V1"},
+    {1, "Blue Diamond V1"},
+    {2, "Blue Diamond V2"},
     {3, "Farmville"},
     {4, "New Lemon Pie"},
   };

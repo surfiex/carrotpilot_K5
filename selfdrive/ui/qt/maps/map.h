@@ -80,6 +80,7 @@ private:
   // FrogPilot variables
   Params params;
 
+  float MAX_ZOOM = 17;  // carrot
 private slots:
   void updateState(const UIState &s);
 

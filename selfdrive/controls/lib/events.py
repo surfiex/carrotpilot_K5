@@ -850,13 +850,9 @@ EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
   },
 
   EventName.accFaulted: {
-    ET.IMMEDIATE_DISABLE: Alert(
-      "Cruise Fault: Restart the Car",
-      "Cruise Fault: Restart the Car",
-      AlertStatus.normal, AlertSize.none,
-      Priority.HIGH, VisualAlert.none, AudibleAlert.none, 2.),
-    #ET.PERMANENT: NormalPermanentAlert("Cruise Fault: Restart the car to engage"),
-    #ET.NO_ENTRY: NoEntryAlert("Cruise Fault: Restart the Car"),
+    ET.IMMEDIATE_DISABLE: ImmediateDisableAlert("Cruise accFault: Restart the Car"),
+    ET.PERMANENT: NormalPermanentAlert("Cruise Fault: Restart the car to engage"),
+    ET.NO_ENTRY: NoEntryAlert("Cruise Fault: Restart the Car"),
   },
 
   EventName.controlsMismatch: {
@@ -1031,6 +1027,15 @@ EVENTS: Dict[int, Dict[str, Union[Alert, AlertCallbackType]]] = {
       "",
       AlertStatus.normal, AlertSize.small,
       Priority.LOW, VisualAlert.none, AudibleAlert.none, .1, alert_rate=0.75),
+  },
+
+  # Random Events
+  FrogPilotEventName.firefoxSteerSaturated: {
+    ET.WARNING: Alert(
+      "Turn Exceeds Steering Limit",
+      "IE Has Stopped Responding...",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.LOW, VisualAlert.steerRequired, AudibleAlert.firefox, 4.),
   },
 
   EventName.laneChangeRoadEdge: {

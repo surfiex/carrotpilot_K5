@@ -12,7 +12,7 @@
 
 const int INTERACTION_TIMEOUT = 100;
 
-const float MAX_ZOOM = 20;// 17;
+//const float MAX_ZOOM = 20;// 17;
 const float MIN_ZOOM = 14;
 const float MAX_PITCH = 50;
 const float MIN_PITCH = 0;
@@ -170,6 +170,8 @@ void MapWindow::updateState(const UIState &s) {
     bool nav_enabled = sm["modelV2"].getModelV2().getNavEnabled() &&
                        (sm["controlsState"].getControlsState().getEnabled() || sm["frogpilotCarControl"].getFrogpilotCarControl().getAlwaysOnLateral()) &&
                        (!params.get("NavDestination").empty() || params.getInt("PrimeType") != 0);
+    //bool nav_enabled = sm["modelV2"].getModelV2().getNavEnabled() &&
+    //                   sm["controlsState"].getControlsState().getEnabled();
     if (nav_enabled != uiState()->scene.navigate_on_openpilot) {
       if (loaded_once) {
         m_map->setPaintProperty("navLayer", "line-color", getNavPathColor(nav_enabled));
@@ -210,6 +212,10 @@ void MapWindow::updateState(const UIState &s) {
     if (allow_open) {
       emit requestSettings(false);
       emit requestVisible(true);
+
+      // carrot
+      extern int _current_carrot_display;
+      _current_carrot_display = 3;
     }
   }
 
@@ -312,14 +318,17 @@ void MapWindow::initializeGL() {
   m_map->setMargins({0, 350, 0, 50});
   m_map->setPitch(MIN_PITCH);
   
+  // carrot
   int mapbox_style = Params().getInt("MapboxStyle");
   
+  MAX_ZOOM = 17;
   switch(mapbox_style) {
     case 1:
       m_map->setStyleUrl("mapbox://styles/mapbox/navigation-night-v1"); 
       break;
     case 2:
       m_map->setStyleUrl("mapbox://styles/mapbox/satellite-streets-v12");
+      MAX_ZOOM = 20;
       break;
     case 0:  
       m_map->setStyleUrl("mapbox://styles/commaai/clkqztk0f00ou01qyhsa5bzpj");

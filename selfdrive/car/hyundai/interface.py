@@ -354,6 +354,7 @@ class CarInterface(CarInterfaceBase):
     ret.stoppingControl = True
     ret.startingState = False # apilot: True
     ret.vEgoStarting = 0.1
+    ret.vEgoStopping = 0.25
     ret.startAccel = 2.0
     ret.stoppingDecelRate = 1.2 # brake_travel/s while trying to stop
     ret.longitudinalActuatorDelayLowerBound = 0.5
@@ -383,6 +384,12 @@ class CarInterface(CarInterfaceBase):
         ret.safetyConfigs[-1].safetyParam |= Panda.FLAG_HYUNDAI_CANFD_HDA2_ALT_STEERING
       if ret.flags & HyundaiFlags.CANFD_ALT_BUTTONS:
         ret.safetyConfigs[-1].safetyParam |= Panda.FLAG_HYUNDAI_CANFD_ALT_BUTTONS
+    else:
+      if candidate in LEGACY_SAFETY_MODE_CAR:
+        # these cars require a special panda safety mode due to missing counters and checksums in the messages
+        ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.hyundaiLegacy)]
+      else:
+        ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.hyundai, 0)]
 
     if ret.flags & HyundaiFlags.CANFD_CAMERA_SCC or candidate in CAMERA_SCC_CAR:
       ret.safetyConfigs[-1].safetyParam |= Panda.FLAG_HYUNDAI_CAMERA_SCC
@@ -425,6 +432,8 @@ class CarInterface(CarInterfaceBase):
     # To avoid re-engaging when openpilot cancels, check user engagement intention via buttons
     # Main button also can trigger an engagement on these cars
     allow_enable = any(btn in ENABLE_BUTTONS for btn in self.CS.cruise_buttons) or any(self.CS.main_buttons)
+
+    allow_enable = True #carrot
     events = self.create_common_events(ret, pcm_enable=self.CS.CP.pcmCruise, allow_enable=allow_enable)
 
     # low speed steer alert hysteresis logic (only for cars with steer cut off above 10 m/s)

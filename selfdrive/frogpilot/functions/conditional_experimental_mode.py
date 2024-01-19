@@ -137,17 +137,17 @@ class ConditionalExperimentalMode:
     self.slow_lead(mpc, radarState, v_ego)
     self.stop_sign_and_light(modelData, v_ego)
     self.v_ego_slowing_down(v_ego)
-    self.v_lead_slowing_down(radarState)
+    self.v_lead_slowing_down(mpc, radarState)
 
   def v_ego_slowing_down(self, v_ego):
     self.slowing_down_gmac.add_data(v_ego < self.previous_v_ego)
     self.slowing_down = self.slowing_down_gmac.get_moving_average() >= PROBABILITY
     self.previous_v_ego = v_ego
 
-  def v_lead_slowing_down(self, radarState):
+  def v_lead_slowing_down(self, mpc, radarState):
     if self.lead_detected:
       v_lead = radarState.leadOne.vLead
-      self.lead_slowing_down_gmac.add_data(v_lead < self.previous_v_lead or v_lead < 1)
+      self.lead_slowing_down_gmac.add_data(v_lead < self.previous_v_lead or v_lead < 1 or radarState.leadOne.dRel <= v_lead * mpc.t_follow)
       self.lead_slowing_down = self.lead_slowing_down_gmac.get_moving_average() >= PROBABILITY
       self.previous_v_lead = v_lead
     else:
@@ -200,7 +200,7 @@ class ConditionalExperimentalMode:
   def update_frogpilot_params(self, is_metric, params):
     self.curves = params.get_bool("CECurves")
     self.curves_lead = params.get_bool("CECurvesLead")
-    self.experimental_mode_via_press = params.get_bool("ExperimentalModeViaPress")
+    self.experimental_mode_via_press = params.get_bool("ExperimentalModeActivation")
     self.limit = params.get_int("CESpeed") * (CV.KPH_TO_MS if is_metric else CV.MPH_TO_MS)
     self.limit_lead = params.get_int("CESpeedLead") * (CV.KPH_TO_MS if is_metric else CV.MPH_TO_MS)
     self.navigation = params.get_bool("CENavigation")

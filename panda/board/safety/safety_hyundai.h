@@ -103,7 +103,7 @@ RxCheck hyundai_legacy_rx_checks[] = {
 };
 
 bool hyundai_legacy = false;
-
+int _carrot_prepare_engage = 0; // carrot
 
 static uint8_t hyundai_get_counter(CANPacket_t *to_push) {
   int addr = GET_ADDR(to_push);
@@ -200,6 +200,11 @@ static void hyundai_rx_hook(CANPacket_t *to_push) {
       int cruise_button = GET_BYTE(to_push, 0) & 0x7U;
       int main_button = GET_BIT(to_push, 3U);
       hyundai_common_cruise_buttons_check(cruise_button, main_button);
+    }
+
+    if (_carrot_prepare_engage == 2) {
+        controls_allowed = true;
+        _carrot_prepare_engage = 1;
     }
 
     // gas press, different for EV, hybrid, and ICE models
@@ -302,7 +307,7 @@ static bool hyundai_tx_hook(CANPacket_t *to_send) {
   if ((addr == 0x4F1) && !hyundai_longitudinal) {
     int button = GET_BYTE(to_send, 0) & 0x7U;
 
-    bool allowed_resume = (button == 1) && controls_allowed;
+    bool allowed_resume = (button == 1);// && controls_allowed;
     bool allowed_set_decel = (button == 2) && controls_allowed;
     bool allowed_cancel = (button == 4) && cruise_engaged_prev;
     bool allowed_gap_dist = (button == 3) && controls_allowed;
@@ -310,15 +315,16 @@ static bool hyundai_tx_hook(CANPacket_t *to_send) {
       tx = false;
     }
   }
-  // ajouatom: for softHold
+  // carrot
   else if ((addr == 0x4F1) && hyundai_longitudinal) {
       int button = GET_BYTE(to_send, 0) & 0x7U;
       if (button == 1) {
-          controls_allowed = true;
+          if (_carrot_prepare_engage == 0) _carrot_prepare_engage = 2;
       }
       tx = false;
   }
-// xxxpilot
+// carrot
+  if (controls_allowed) _carrot_prepare_engage = 0;
   if(addr == 832)
     last_ts_lkas11_from_op = (tx == 0 ? 0 : microsecond_timer_get());
   else if(addr == 1057)

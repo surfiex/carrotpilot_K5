@@ -235,7 +235,7 @@ class CarInterfaceBase(ABC):
     if "SIMULATION" in os.environ:  #ajouatom why?
       ret.steerControlType = car.CarParams.SteerControlType.angle
     # Enable torque controller for all cars that do not use angle based steering
-    if ret.steerControlType != car.CarParams.SteerControlType.angle:
+    if ret.steerControlType != car.CarParams.SteerControlType.angle and Params().get_bool("LateralTune") and Params().get_bool("NNFF"):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
       eps_firmware = str(next((fw.fwVersion for fw in car_fw if fw.ecu == "eps"), ""))
       model, similarity_score = get_nn_model_path(candidate, eps_firmware)
@@ -608,7 +608,7 @@ class CarStateBase(ABC):
 
   def update_frogpilot_params(self, params):
     self.conditional_experimental_mode = params.get_bool("ConditionalExperimental")
-    self.experimental_mode_via_press = params.get_bool("ExperimentalModeViaPress")
+    self.experimental_mode_via_lkas = params.get_bool("ExperimentalModeViaLKAS") and params.get_bool("ExperimentalModeActivation");
     self.personalities_via_wheel = params.get_int("AdjustablePersonalities") in {1, 3}
 
 INTERFACE_ATTR_FILE = {

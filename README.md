@@ -1,6 +1,7 @@
-![image](https://github.com/ajouatom/carrotpilot/assets/43668841/ee65208b-9ca5-4861-942c-1dd1028f138f)
-![image](https://github.com/ajouatom/carrotpilot/assets/43668841/4862230b-36c3-4ddd-8c59-943e73f9380c)
-![image](https://github.com/ajouatom/carrotpilot/assets/43668841/c80e6fe7-5229-439f-a48d-6fefcc6c0e37)
+* [당근설명](CARROT.md)
+* [당근설정](CARROT_SETTINGS.md)
+* [당근맨설명](CARROTMAN.md)
+
 
 What is carrotpilot?
 ------
@@ -19,16 +20,16 @@ What is the useful features of CarrotPilot?
 **SCC Wiring Modification Support: HKG cars only**
   - If the C-CAN wiring of the SCC modules is bypassed and connected to BUS2, long control using radar is supported.(레이더(SCC)모듈의 배선을 개조하여 BUS2에 연결한 경우, 롱컨을 지원한다.)
     
-**APM: APILOT feature**
-  - APM is ApilotManager. (APM은 ApilotManger을 말한다.)
-  - APM is for Android Phone/Tablet.  (APM은 안드로이드 폰이나 태블릿에서 작동한다)
-  - The features of CarrotPilot can be configured remotely via APM (당근의 기능은 APM으로 원격설정이 가능하다.)
+**APM: CarrotMan for Android**
+  - When CarrotMan connected, APM is activated. (CarrotMan이 연결되면 APM이 활성화된다.)
+  - CarrotMan is for Android Phone/Tablet.  (APM은 안드로이드 폰이나 태블릿에서 작동한다)
+  - The features of CarrotPilot can be set remotely via APM (당근의 기능은 APM으로 원격설정이 가능하다.)
     
-**APN: Korea navigation only, APILOT feature**
+**APN: Korea navigation only**
   - When navigatgion is connected, you can use APN. (APM이 설치된 폰에 특정 네비게이션을 설치하면 APN모드를 사용할 수 있다)
   - It's a feature that automatically recuces speed in response to speed cameras and speed bumps for accident prevention. (오파의 NOO활성화 및 사고방지턱, 과속카메라에 대해 속도조절이 된다)
     
-**APILOT UI: APM, APILOT feature**
+**Carrot UI**
   - You can experience a variety of APILOT UIs using APM. (APILOT의 다이내믹한 UI를 경험할 수 있다)
   - Path UI: When long control is turned off or on, and depending on whether it's in lane mode or laneless mode, it's possible to specify different shapes and colors for the path. Above all, the moving path shape looks cool. (레인모드, 레인리스모드, 크루즈OFF에 대한 패쓰경로표시 방식 및 색상을 변경할 수 있다)
   - Debug plotting: It's a plotting tool for tuning long control and steering control. (튜닝을 위하여 차량의 주행상황, 레이더등의 그래프를 지원한다)
@@ -47,7 +48,7 @@ What is the useful features of CarrotPilot?
 **Use Lane line mode:**
   - If the speed exceeds the set speed, it automatically switches to lane mode. This method uses lat_mpc
     
-**Automatic Engage: HKG car only, APILOT feature**
+**Automatic Engage: HKG car only**
   * Setting - APM/Carrot - Cruise (설정/당근/크루즈)
     * (HKG) Auto Cruise Control (자동 크루즈 제어)
       * 1: Enable Automatic cruise control (자동크루즈 제어 켜기)
@@ -67,47 +68,6 @@ What is the useful features of CarrotPilot?
 **Voice Recognition: APM, Korean only, APILOT feature, under construction!**
   - The connected APM supports voice recognition. It allows for lane changes and speed control using voice commands.
 
-**Settings - Carrot**
-  * Start
-    * (HKG) SCC Module connected BUS2
-    * (HKG) EnableRadarTracks
-    * Adjust Sound Volume
-    * Adjust Sound Volume, Engage
-    * Mapbox Style
-  * Cruise
-    * (HKG) Auto Cruise control
-    * Button: Cruise Button Mode
-    * Button: Cruise Speed Unit
-    * STOPPING: Traffic Stop Mode
-    * CRUISE: Eco control
-    * CRUISE: Auto ON distance
-    * lol! too many..
-  * Speed
-  * Tuning
-  * Disp
-  * Path
-
-**HKG차량을 위한 설정방법(롱컨이용가능차량)**
-  * Setting - Device(장치)
-    * Set to default(for HKG) : 누르고, 재시작(재부팅)    * 
-  * Setting - Carrot(당근)
-    * Start(시작) : 차량에 맞게 설정
-    * 나머지는 APILOT과 거의 동일함.
-  * Setting - Control
-    * Adjustable Personalites : [Steering Wheel] or [Wheel + Button]
-    * Conditional Experimental Mode : OFF (ON하면 Carrot의 기능작동정지)
-    * Custom Driving Personalities : ON (변경하고 싶으면)
-    * Fire the Babysitter : ON (OFF하고, DM을 끄면 banned 될수 있음)
-    * Lateral Tuning: 맘대로
-    * Longitudinal Tuning: ON
-      * Acceleration Profile : Standard (다른것으로 하면 Carrot설정이 안됨)
-      * Aggressive Acceleration With Lead : Off
-      * Smoother Braking Behind Lead : Off
-      * Increase Stopping Distance : Off
-  * Setting - Navigation (맘대로)
-    * ip주소:8082로 접속하여 Public/Secret Mapbox Key를 입력한다.
-  * Setting - Vehicles (맘대로)
-  * Setting - Visuals (맘대로)
 ---
 
 ![openpilot on the comma 3X](https://i.imgur.com/6l2qbf5.png)

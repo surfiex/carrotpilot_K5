@@ -196,6 +196,10 @@
     "content": "80"
   },
   {
+    "filename": "CruiseMinVals",
+    "content": "120"
+  },
+  {
     "filename": "CruiseOnDist",
     "content": "-400"
   },
@@ -318,10 +322,6 @@
   {
     "filename": "LeadInfo",
     "content": "1"
-  },
-  {
-    "filename": "LiveSteerRatioApply",
-    "content": "100"
   },
   {
     "filename": "LockDoors",
@@ -549,7 +549,7 @@
   },
   {
     "filename": "ShowGapInfo",
-    "content": "1"
+    "content": "-1"
   },
   {
     "filename": "ShowHudMode",
@@ -660,7 +660,7 @@
     "content": "0"
   },
   {
-    "filename": "SteerRatioApply",
+    "filename": "SteerRatio",
     "content": "0"
   },
   {

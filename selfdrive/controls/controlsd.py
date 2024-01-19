@@ -18,7 +18,6 @@ from openpilot.system.version import get_short_branch
 from openpilot.selfdrive.boardd.boardd import can_list_to_can_capnp
 from openpilot.selfdrive.car.car_helpers import get_car, get_startup_event, get_one_can
 from openpilot.selfdrive.controls.lib.lateral_planner import CAMERA_OFFSET
-from openpilot.selfdrive.controls.lib.desire_helper import LANE_CHANGE_SPEED_MIN
 from openpilot.selfdrive.controls.lib.drive_helpers import VCruiseHelper, get_lag_adjusted_curvature
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl, MIN_LATERAL_CONTROL_SPEED
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl
@@ -83,7 +82,11 @@ class Controls:
     fire_the_babysitter = self.params.get_bool("FireTheBabysitter")
     mute_dm = fire_the_babysitter and self.params.get_bool("MuteDM")
 
+    self.random_event_triggered = False
     self.stopped_for_light_previously = False
+
+    self.random_event_timer = 0
+
     ignore = self.sensor_packets + ['testJoystick']
     if SIMULATION:
       ignore += ['driverCameraState', 'managerState']
@@ -107,8 +110,6 @@ class Controls:
       self.CS = self.CI.CS
     else:
       self.CI, self.CP, self.CS = CI, CI.CP, CI.CS
-
-    self.update_frogpilot_params()
 
     self.joystick_mode = self.params.get_bool("JoystickDebugMode")
 
@@ -135,6 +136,7 @@ class Controls:
     self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
     openpilot_enabled_toggle = self.params.get_bool("OpenpilotEnabledToggle")
     passive = self.params.get_bool("Passive") or not openpilot_enabled_toggle
+    self.update_frogpilot_params()
 
     # detect sound card presence and ensure successful init
     sounds_available = HARDWARE.get_sound_card_online()
@@ -205,7 +207,7 @@ class Controls:
     self.desired_curvature = 0.0
     self.desired_curvature_rate = 0.0
     self.experimental_mode = False
-    self.v_cruise_helper = VCruiseHelper(self.CP, self.is_metric)
+    self.v_cruise_helper = VCruiseHelper(self.CP)
     self.recalibrating_seen = False
     self.nn_alert_shown = False
 
@@ -229,6 +231,7 @@ class Controls:
 
 
     self.carrotCruiseActivate = 0 #carrot
+    self._panda_controls_allowed = False #carrot
 
   def set_initial_state(self):
     if REPLAY:
@@ -520,8 +523,9 @@ class Controls:
       self.mismatch_counter = 0
 
     # All pandas not in silent mode must have controlsAllowed when openpilot is enabled
-    if self.enabled and any(not ps.controlsAllowed for ps in self.sm['pandaStates']
-           if ps.safetyModel not in IGNORED_SAFETY_MODES):
+    self._panda_controls_allowed = any(not ps.controlsAllowed for ps in self.sm['pandaStates']
+           if ps.safetyModel not in IGNORED_SAFETY_MODES)
+    if self.enabled and self._panda_controls_allowed:
       self.mismatch_counter += 1
 
     self.distance_traveled += CS.vEgo * DT_CTRL
@@ -533,20 +537,26 @@ class Controls:
 
     gear = car.CarState.GearShifter
     drivingGear = CS.gearShifter not in (gear.neutral, gear.park, gear.reverse, gear.unknown)
-    self.can_enable = drivingGear and not self.events.contains(ET.NO_ENTRY)
+    if self.CP.pcmCruise:
+      self.can_enable = drivingGear
+    else:
+      self.can_enable = drivingGear and not self.events.contains(ET.NO_ENTRY)
 
-    self.v_cruise_helper.update_v_cruise(CS, self.enabled, self.is_metric, self.reverse_cruise_increase, self)
+    self.v_cruise_helper.update_v_cruise(CS, self.enabled, self.is_metric, self.reverse_cruise_increase, self.set_speed_offset, self)
 
     #############################################################
-    if self.v_cruise_helper.cruiseActivate > 0:
-      #print("[state_transition] cruiseActivate, noEntry=",self.events.contains(ET.NO_ENTRY), " self.enabled = ", self.enabled)
-      pass
+    #if self.v_cruise_helper.cruiseActivate > 0:
+    #  #print("[state_transition] cruiseActivate, noEntry=",self.events.contains(ET.NO_ENTRY), " self.enabled = ", self.enabled)
+    #  pass
     if not self.enabled and self.v_cruise_helper.cruiseActivate > 0: #ajouatom
+      self.carrotCruiseActivate = 1
       if self.can_enable:
-        self.events.add(EventName.buttonEnable)
-        print("CruiseActivate: Button Enable")
+        if not self.CP.pcmCruise and self._panda_controls_allowed:
+          self.events.add(EventName.buttonEnable)
+          print("CruiseActivate: Button Enable")
         self.carrotCruiseActivate = 1
       else:
+        print("CruiseActivate: Button Enable: Cannot enabled....###")
         self.v_cruise_helper.cruiseActivate = 0
         self.v_cruise_helper.softHoldActive = 0
     if self.enabled and self.v_cruise_helper.cruiseActivate < 0:
@@ -635,7 +645,7 @@ class Controls:
     if self.active:
       self.current_alert_types.append(ET.WARNING)
 
-    if not self.enabled:
+    if not self.enabled and not self.CP.pcmCruise:
       self.carrotCruiseActivate = 0
 
   def state_control(self, CS):
@@ -644,11 +654,7 @@ class Controls:
     # Update VehicleModel
     lp = self.sm['liveParameters']
     x = max(lp.stiffnessFactor, 0.1)
-    if self.v_cruise_helper.steerRatioApply > 0.0:
-      sr = self.v_cruise_helper.steerRatioApply
-    else:
-      sr = max(lp.steerRatio, 0.1)
-      sr *= self.v_cruise_helper.liveSteerRatioApply
+    sr = max(self.steer_ratio, 0.1)
     self.VM.update_params(x, sr)
 
     # Update Torque Params
@@ -662,6 +668,14 @@ class Controls:
     long_plan = self.sm['longitudinalPlan']
     frogpilot_long_plan = self.sm['frogpilotLongitudinalPlan']
 
+    # Reset the Random Event flag
+    if self.random_event_triggered:
+      self.random_event_timer += 1
+      if self.random_event_timer >= 400:
+        self.random_event_triggered = False
+        self.random_event_timer = 0
+        self.params_memory.remove("CurrentRandomEvent")
+
     CC = car.CarControl.new_message()
     CC.enabled = self.enabled
 
@@ -673,7 +687,7 @@ class Controls:
     gear = car.CarState.GearShifter
     driving_gear = CS.gearShifter not in (gear.neutral, gear.park, gear.reverse, gear.unknown)
 
-    signal_check = not ((CS.leftBlinker or CS.rightBlinker) and self.pause_lateral_on_signal and CS.vEgo < LANE_CHANGE_SPEED_MIN)
+    signal_check = not ((CS.leftBlinker or CS.rightBlinker) and CS.vEgo < self.pause_lateral_on_signal and not CS.standstill)
 
     # Always on lateral
     if self.always_on_lateral:
@@ -763,8 +777,13 @@ class Controls:
         turning = abs(lac_log.desiredLateralAccel) > 1.0
         good_speed = CS.vEgo > 5
         max_torque = abs(self.last_actuators.steer) > 0.99
-        if undershooting and turning and good_speed and max_torque:
-          lac_log.active and self.events.add(EventName.steerSaturated)
+        if undershooting and turning and good_speed and max_torque and not self.random_event_triggered:
+          if self.sm.frame % 10000 == 0:
+            lac_log.active and self.events.add(FrogPilotEventName.firefoxSteerSaturated)
+            self.params_memory.put_int("CurrentRandomEvent", 1)
+            self.random_event_triggered = True
+          else:
+            lac_log.active and self.events.add(FrogPilotEventName.frogSteerSaturated if self.goat_scream else EventName.steerSaturated)
       elif lac_log.saturated:
         dpath_points = lat_plan.dPathPoints
         if len(dpath_points):
@@ -807,15 +826,28 @@ class Controls:
 
     CC.cruiseControl.override = self.enabled and not CC.longActive and self.CP.openpilotLongitudinalControl
     CC.cruiseControl.cancel = CS.cruiseState.enabled and (not self.enabled or not self.CP.pcmCruise)
+
+    ### carrot
+    if self.CP.pcmCruise:
+      if self.enabled and self.carrotCruiseActivate < 0:
+        CC.cruiseControl.cancel = True
+      elif CC.cruiseControl.cancel: 
+        print("Cancel state...enabled={}, activate={}".format(self.enabled, self.carrotCruiseActivate))
+        if self.carrotCruiseActivate > 0:
+          CC.cruiseControl.cancel = False
+
     if self.joystick_mode and self.sm.rcv_frame['testJoystick'] > 0 and self.sm['testJoystick'].buttons[0]:
       CC.cruiseControl.cancel = True
 
+    setSpeed = float(self.v_cruise_helper.v_cruise_cluster_kph * CV.KPH_TO_MS)
     speeds = self.sm['longitudinalPlan'].speeds
     if len(speeds):
       CC.cruiseControl.resume = self.enabled and CS.cruiseState.standstill and speeds[-1] > 0.1
+      vCluRatio = CS.vCluRatio if CS.vCluRatio > 0.5 else 1.0
+      setSpeed = speeds[-1] / vCluRatio
 
     hudControl = CC.hudControl
-    hudControl.setSpeed = float(self.v_cruise_helper.v_cruise_cluster_kph * CV.KPH_TO_MS)
+    hudControl.setSpeed = setSpeed if self.CP.pcmCruise or self.v_cruise_helper.xState == 3 else float(self.v_cruise_helper.v_cruise_cluster_kph * CV.KPH_TO_MS)
     hudControl.speedVisible = self.enabled
     hudControl.lanesVisible = self.enabled
     hudControl.leadVisible = self.sm['longitudinalPlan'].hasLead
@@ -1022,7 +1054,8 @@ class Controls:
 
         # Update FrogPilot parameters
         if self.params_memory.get_bool("FrogPilotTogglesUpdated"):
-          self.update_frogpilot_params()
+          updateFrogPilotParams = threading.Thread(target=self.update_frogpilot_params)
+          updateFrogPilotParams.start()
 
     except SystemExit:
       e.set()
@@ -1043,11 +1076,21 @@ class Controls:
 
     self.green_light_alert = self.params.get_bool("GreenLightAlert")
 
+    lateral_tune = self.params.get_bool("LateralTune")
+    steer_ratio = float(self.params.get_int("SteerRatio")) / 10.0
+    steer_ratio_stock = float(self.params.get_int("SteerRatioStock")) / 10.0
+    steer_ratio = steer_ratio if steer_ratio_stock * 0.5 < steer_ratio < steer_ratio_stock * 1.5 else steer_ratio_stock
+    self.steer_ratio = steer_ratio if lateral_tune or steer_ratio > 0 else steer_ratio_stock
+
     longitudinal_tune = self.params.get_bool("LongitudinalTune")
     self.sport_plus = self.params.get_int("AccelerationProfile") == 3 and longitudinal_tune
 
-    self.pause_lateral_on_signal = self.params.get_bool("PauseLateralOnSignal")
-    self.reverse_cruise_increase = self.params.get_bool("ReverseCruise")
+    quality_of_life = self.params.get_bool("QOLControls")
+    self.pause_lateral_on_signal = self.params.get_int("PauseLateralOnSignal") * (CV.KPH_TO_MS if self.is_metric else CV.MPH_TO_MS) if quality_of_life else 0
+    self.reverse_cruise_increase = self.params.get_bool("ReverseCruise") and quality_of_life
+    self.set_speed_offset = self.params.get_int("SetSpeedOffset") * (1 if self.is_metric else CV.MPH_TO_KPH) if quality_of_life else 0
+
+    self.random_events = self.params.get_bool("RandomEvents")
 
 def main():
   controls = Controls()

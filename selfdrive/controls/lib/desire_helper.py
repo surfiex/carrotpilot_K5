@@ -76,6 +76,7 @@ class DesireHelper:
     self.lane_change_wait_timer = 0
 
     self.lane_available_prev = False
+    self.blinker_bypass = False
 
 
   def update(self, carstate, modeldata, lateral_active, lane_change_prob, frogpilot_planner, sm):
@@ -97,6 +98,9 @@ class DesireHelper:
     leftBlinker = carstate.leftBlinker or leftBlinkerExt > 0
     rightBlinker = carstate.rightBlinker or rightBlinkerExt > 0
     one_blinker = leftBlinker != rightBlinker
+    if not one_blinker:
+      self.blinker_bypass = False
+    one_blinker &= not self.blinker_bypass
     below_lane_change_speed = v_ego < LANE_CHANGE_SPEED_MIN if blinkerExtMode in [0,2] else v_ego < 5. * CV.KPH_TO_MS  ## carrot, when auto turn...
 
     # Calculate left and right lane widths for the blindspot path
@@ -218,6 +222,7 @@ class DesireHelper:
     if steering_pressed:
       self.lane_change_direction = LaneChangeDirection.none
       self.lane_change_state = LaneChangeState.off
+      self.blinker_bypass = True
     
     # Reset the flags
     self.lane_change_completed &= one_blinker

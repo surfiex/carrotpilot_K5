@@ -61,7 +61,7 @@ def manager_init() -> None:
     ("ShowConnInfo", "1"),
     ("ShowLaneInfo", "1"),
     ("ShowBlindSpot", "1"),
-    ("ShowGapInfo", "1"),
+    ("ShowGapInfo", "-1"),
     ("ShowDmInfo", "1"),
     ("ShowRadarInfo", "1"),
     ("MixRadarInfo", "0"),
@@ -105,7 +105,6 @@ def manager_init() -> None:
     ("CruiseSpeedUnit", "10"),      
     ("MyDrivingMode", "3"),      
     ("MySafeModeFactor", "60"),      
-    ("LiveSteerRatioApply", "100"),      
     ("MyEcoModeFactor", "80"),  
     ("CruiseMaxVals1", "160"),
     ("CruiseMaxVals2", "120"),
@@ -113,6 +112,7 @@ def manager_init() -> None:
     ("CruiseMaxVals4", "80"),
     ("CruiseMaxVals5", "70"),
     ("CruiseMaxVals6", "60"),
+    ("CruiseMinVals", "120"),
     ("CruiseSpeedMin", "10"),
     ("LongitudinalTuningKpV", "100"),     
     ("LongitudinalTuningKiV", "0"),     
@@ -134,12 +134,12 @@ def manager_init() -> None:
     ("AdjustCurveOffset", "0"),    
     ("UseModelPath", "0"),    
     ("PathOffset", "0"),  
+    ("MaxAngleFrames", "89"),       
     ("LateralTorqueCustom", "0"),       
     ("LateralTorqueAccelFactor", "2500"),       
     ("LateralTorqueFriction", "100"),       
     ("SteerActuatorDelay", "40"),       
     ("CruiseOnDist", "0"),
-    ("SteerRatioApply", "0"),
   ]
   if not PC:
     default_params.append(("LastUpdateTime", datetime.datetime.utcnow().isoformat().encode('utf8')))
@@ -344,6 +344,8 @@ if __name__ == "__main__":
 
   try:
     main()
+  except KeyboardInterrupt:
+    print("got CTRL-C, exiting")
   except Exception:
     add_file_handler(cloudlog)
     cloudlog.exception("Manager failed to start")

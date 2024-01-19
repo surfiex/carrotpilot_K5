@@ -15,7 +15,7 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
 
     {"CustomPersonalities", "Custom Driving Personalities", "Customize the driving personality profiles to your driving style.", "../frogpilot/assets/toggle_icons/icon_custom.png"},
     {"DeviceShutdown", "Device Shutdown Timer", "Configure the timer for automatic device shutdown when offroad conserving energy and preventing battery drain.", "../frogpilot/assets/toggle_icons/icon_time.png"},
-    {"ExperimentalModeViaPress", "Experimental Mode Via 'LKAS' Button / Screen", "Toggle Experimental Mode by double-clicking the 'Lane Departure'/'LKAS' button or double tapping screen.\n\nOverrides 'Conditional Experimental Mode'.", "../assets/img_experimental_white.svg"},
+    {"ExperimentalModeActivation", "Experimental Mode Via", "Toggle Experimental Mode by double-clicking the 'Lane Departure'/'LKAS' button or double tapping screen.\n\nOverrides 'Conditional Experimental Mode'.", "../assets/img_experimental_white.svg"},
 
     {"FireTheBabysitter", "Fire the Babysitter", "Deactivate some of openpilot's 'Babysitter' protocols for more user autonomy.", "../frogpilot/assets/toggle_icons/icon_babysitter.png"},
     {"NoLogging", "Disable All Logging", "Turn off all data tracking to enhance privacy or reduce thermal load.\n\nWARNING: This action will prevent drive recording and data cannot be recovered!", ""},
@@ -23,10 +23,12 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
     {"MuteDM", "Mute Driver Monitoring", "Disable driver monitoring.", ""},
     {"MuteOverheated", "Mute Overheated System Alert", "Disable alerts for the device being overheated.", ""},
     {"MuteSeatbelt", "Mute Seatbelt Unlatched Alert", "Disable alerts for unlatched seatbelts.", ""},
+    {"OfflineMode", "Offline Mode", "Allow the device to be offline indefinitely.", ""},
 
     {"LateralTune", "Lateral Tuning", "Modify openpilot's steering behavior.", "../frogpilot/assets/toggle_icons/icon_lateral_tune.png"},
     {"AverageCurvature", "Average Desired Curvature", "Use Pfeiferj's distance-based curvature adjustment for improved curve handling.", ""},
     {"NNFF", "NNFF - Neural Network Feedforward", "Use Twilsonco's Neural Network Feedforward for enhanced precision in lateral control.", ""},
+    {"SteerRatio", steerRatioStock != 0 ? QString("Steer Ratio (Default: " + QString::number(steerRatioStock / 10.0) + ")") : "Steer Ratio", "Set a custom steer ratio for your vehicle controls.", ""},
 
     {"LongitudinalTune", "Longitudinal Tuning", "Modify openpilot's acceleration and braking behavior.", "../frogpilot/assets/toggle_icons/icon_longitudinal_tune.png"},
     {"AccelerationProfile", "Acceleration Profile", "Change the acceleration rate to be either sporty or eco-friendly.", ""},
@@ -35,13 +37,21 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
     {"SmoothBraking", "Smoother Braking Behind Lead", "Smoothen out the braking behavior when approaching slower vehicles.", ""},
 
     {"Model", "Model Selector", "Choose your preferred openpilot model.", "../assets/offroad/icon_calibration.png"},
+
     {"MTSCEnabled", "Map Turn Speed Control", "Slow down for anticipated curves detected by your downloaded maps.", "../frogpilot/assets/toggle_icons/icon_speed_map.png"},
+    {"MTSCAggressiveness", "Turn Speed Aggressiveness", "Set turn speed aggressiveness. Higher values result in faster turns, lower values yield gentler turns.\n\nA change of +- 1% results in the velocity being raised or lowered by about 1 mph.", ""},
 
     {"NudgelessLaneChange", "Nudgeless Lane Change", "Enable lane changes without manual steering input.", "../frogpilot/assets/toggle_icons/icon_lane.png"},
     {"LaneChangeTime", "Lane Change Timer", "Specify a delay before executing a nudgeless lane change.", ""},
     {"LaneDetection", "Lane Detection", "Block nudgeless lane changes when a lane isn't detected.", ""},
     {"OneLaneChange", "One Lane Change Per Signal", "Limit to one nudgeless lane change per turn signal activation.", ""},
-    {"PauseLateralOnSignal", "Pause Lateral On Turn Signal", "Temporarily disable lateral control during turn signal use.", ""},
+
+    {"QOLControls", "Quality of Life", "Miscellaneous quality of life changes to improve your overall openpilot experience.", "../frogpilot/assets/toggle_icons/quality_of_life.png"},
+    {"DisableOnroadUploads", "Disable Onroad Uploads", "Prevent large data uploads when onroad.", ""},
+    {"HigherBitrate", "Higher Bitrate Recording", "Increases the quality of the footage uploaded to comma connect.", ""},
+    {"PauseLateralOnSignal", "Pause Lateral On Turn Signal Below", "Temporarily disable lateral control during turn signal use below the set speed.", ""},
+    {"ReverseCruise", "Reverse Cruise Increase", "Reverses the 'long press' functionality when increasing the max set speed. Useful to increase the max speed quickly.", ""},
+    {"SetSpeedOffset", "Set Speed Offset", "Set an offset for your desired set speed.", ""},
 
     {"SpeedLimitController", "Speed Limit Controller", "Automatically adjust vehicle speed to match speed limits using 'Open Street Map's, 'Navigate On openpilot', or your car's dashboard (TSS2 Toyotas only).", "../assets/offroad/icon_speed_limit.png"},
     {"Offset1", "Speed Limit Offset (0-34 mph)", "Speed limit offset for speed limits between 0-34 mph.", ""},
@@ -66,7 +76,7 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
       toggle = new FrogPilotParamValueControl(param, title, desc, icon, 0, 3, {{0, "None"}, {1, "Steering Wheel"}, {2, "Onroad UI Button"}, {3, "Wheel + Button"}}, this, true);
 
     } else if (param == "AlwaysOnLateral") {
-      std::vector<QString> aolToggles{tr("AlwaysOnLateralMain")};
+      std::vector<QString> aolToggles{"AlwaysOnLateralMain"};
       std::vector<QString> aolToggleNames{tr("Enable On Cruise Main")};
       toggle = new FrogPilotParamToggleControl(param, title, desc, icon, aolToggles, aolToggleNames);
 
@@ -93,24 +103,24 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
       toggle = conditionalExperimentalToggle;
     } else if (param == "CECurves") {
       FrogPilotParamValueControl *CESpeedImperial = new FrogPilotParamValueControl("CESpeed", "Below", "Switch to 'Experimental Mode' below this speed in absence of a lead vehicle.", "", 0, 99,
-                                                                 std::map<int, QString>(), this, false, " mph");
+                                                                                   std::map<int, QString>(), this, false, " mph");
       FrogPilotParamValueControl *CESpeedLeadImperial = new FrogPilotParamValueControl("CESpeedLead", "  w/Lead", "Switch to 'Experimental Mode' below this speed when following a lead vehicle.", "", 0, 99,
-                                                                     std::map<int, QString>(), this, false, " mph");
+                                                                                       std::map<int, QString>(), this, false, " mph");
       conditionalSpeedsImperial = new FrogPilotDualParamControl(CESpeedImperial, CESpeedLeadImperial, this);
       addItem(conditionalSpeedsImperial);
 
       FrogPilotParamValueControl *CESpeedMetric = new FrogPilotParamValueControl("CESpeed", "Below", "Switch to 'Experimental Mode' below this speed in absence of a lead vehicle.", "", 0, 150,
-                                                               std::map<int, QString>(), this, false, " kph");
-      FrogPilotParamValueControl *CESpeedLeadMetric = new FrogPilotParamValueControl("CESpeedLead", "  w/Lead", "Switch to 'Experimental Mode' below this speed when following a lead vehicle.", "",
-                                                                   0, 150, std::map<int, QString>(), this, false, " kph");
+                                                                                 std::map<int, QString>(), this, false, " kph");
+      FrogPilotParamValueControl *CESpeedLeadMetric = new FrogPilotParamValueControl("CESpeedLead", "  w/Lead", "Switch to 'Experimental Mode' below this speed when following a lead vehicle.", "", 0, 150,
+                                                                                     std::map<int, QString>(), this, false, " kph");
       conditionalSpeedsMetric = new FrogPilotDualParamControl(CESpeedMetric, CESpeedLeadMetric, this);
       addItem(conditionalSpeedsMetric);
 
-      std::vector<QString> curveToggles{tr("CECurvesLead")};
+      std::vector<QString> curveToggles{"CECurvesLead"};
       std::vector<QString> curveToggleNames{tr("With Lead")};
       toggle = new FrogPilotParamToggleControl(param, title, desc, icon, curveToggles, curveToggleNames);
     } else if (param == "CEStopLights") {
-      std::vector<QString> stopLightToggles{tr("CEStopLightsLead")};
+      std::vector<QString> stopLightToggles{"CEStopLightsLead"};
       std::vector<QString> stopLightToggleNames{tr("With Lead")};
       toggle = new FrogPilotParamToggleControl(param, title, desc, icon, stopLightToggles, stopLightToggleNames);
 
@@ -161,6 +171,11 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
       }
       toggle = new FrogPilotParamValueControl(param, title, desc, icon, 0, 33, shutdownLabels, this, false);
 
+    } else if (param == "ExperimentalModeActivation") {
+      std::vector<QString> experimentalModeToggles{"ExperimentalModeViaLKAS", "ExperimentalModeViaScreen"};
+      std::vector<QString> experimentalModeNames{tr("LKAS Button"), tr("Screen")};
+      toggle = new FrogPilotParamToggleControl(param, title, desc, icon, experimentalModeToggles, experimentalModeNames);
+
     } else if (param == "FireTheBabysitter") {
       FrogPilotParamManageControl *fireTheBabysitterToggle = new FrogPilotParamManageControl(param, title, desc, icon, this);
       QObject::connect(fireTheBabysitterToggle, &FrogPilotParamManageControl::manageButtonClicked, this, [this]() {
@@ -180,6 +195,8 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
         }
       });
       toggle = lateralTuneToggle;
+    } else if (param == "SteerRatio") {
+      toggle = new FrogPilotParamValueControl(param, title, desc, icon, steerRatioStock * 0.75, steerRatioStock * 1.25, std::map<int, QString>(), this, false, "", 10);
 
     } else if (param == "LongitudinalTune") {
       FrogPilotParamManageControl *longitudinalTuneToggle = new FrogPilotParamManageControl(param, title, desc, icon, this);
@@ -206,7 +223,7 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
 
     } else if (param == "Model") {
       modelSelectorButton = new FrogPilotButtonIconControl(title, tr("SELECT"), desc, icon);
-      QStringList models = {"New Delhi", "Blue Diamond V2", "Blue Diamond V1", "Farmville", "New Lemon Pie"};
+      QStringList models = {"New Delhi (Default)", "Blue Diamond V1", "Blue Diamond V2", "Farmville", "New Lemon Pie"};
       QObject::connect(modelSelectorButton, &FrogPilotButtonIconControl::clicked, this, [this, models]() {
         int currentModel = params.getInt("Model");
         QString currentModelLabel = models[currentModel];
@@ -226,6 +243,18 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
       modelSelectorButton->setValue(models[params.getInt("Model")]);
       addItem(modelSelectorButton);
 
+    } else if (param == "MTSCEnabled") {
+      FrogPilotParamManageControl *mtscToggle = new FrogPilotParamManageControl(param, title, desc, icon, this);
+      QObject::connect(mtscToggle, &FrogPilotParamManageControl::manageButtonClicked, this, [this]() {
+        parentToggleClicked();
+        for (auto &[key, toggle] : toggles) {
+          toggle->setVisible(mtscKeys.find(key.c_str()) != mtscKeys.end());
+        }
+      });
+      toggle = mtscToggle;
+    } else if (param == "MTSCAggressiveness") {
+      toggle = new FrogPilotParamValueControl(param, title, desc, icon, 1, 200, std::map<int, QString>(), this, false, "%");
+
     } else if (param == "NudgelessLaneChange") {
       FrogPilotParamManageControl *laneChangeToggle = new FrogPilotParamManageControl(param, title, desc, icon, this);
       QObject::connect(laneChangeToggle, &FrogPilotParamManageControl::manageButtonClicked, this, [this]() {
@@ -241,6 +270,20 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
         laneChangeTimeLabels[i] = i == 0 ? "Instant" : QString::number(i / 2.0) + " seconds";
       }
       toggle = new FrogPilotParamValueControl(param, title, desc, icon, 0, 10, laneChangeTimeLabels, this, false);
+
+    } else if (param == "QOLControls") {
+      FrogPilotParamManageControl *qolToggle = new FrogPilotParamManageControl(param, title, desc, icon, this);
+      QObject::connect(qolToggle, &FrogPilotParamManageControl::manageButtonClicked, this, [this]() {
+        parentToggleClicked();
+        for (auto &[key, toggle] : toggles) {
+          toggle->setVisible(qolKeys.find(key.c_str()) != qolKeys.end());
+        }
+      });
+      toggle = qolToggle;
+    } else if (param == "PauseLateralOnSignal") {
+      toggle = new FrogPilotParamValueControl(param, title, desc, icon, 0, 99, std::map<int, QString>(), this, false, " mph");
+    } else if (param == "SetSpeedOffset") {
+      toggle = new FrogPilotParamValueControl(param, title, desc, icon, 0, 99, std::map<int, QString>(), this, false, " mph");
 
     } else if (param == "SpeedLimitController") {
       FrogPilotParamManageControl *speedLimitControllerToggle = new FrogPilotParamManageControl(param, title, desc, icon, this);
@@ -363,7 +406,7 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
     });
   }
 
-  std::set<std::string> rebootKeys = {"AlwaysOnLateral", "FireTheBabysitter", "MuteDM", "NNFF"};
+  std::set<std::string> rebootKeys = {"AlwaysOnLateral", "FireTheBabysitter", "HigherBitrate", "MuteDM", "NNFF"};
   for (const std::string &key : rebootKeys) {
     QObject::connect(toggles[key], &ToggleControl::toggleFlipped, [this]() {
       if (FrogPilotConfirmationDialog::toggle("Reboot required to take effect.", "Reboot Now", this)) {
@@ -373,18 +416,37 @@ FrogPilotControlsPanel::FrogPilotControlsPanel(SettingsWindow *parent) : FrogPil
   }
 
   conditionalExperimentalKeys = {"CECurves", "CECurvesLead", "CESlowerLead", "CENavigation", "CEStopLights", "CESignal"};
-  fireTheBabysitterKeys = {"NoLogging", "MuteDM", "MuteDoor", "MuteOverheated", "MuteSeatbelt"};
-  laneChangeKeys = {"LaneChangeTime", "LaneDetection", "OneLaneChange", "PauseLateralOnSignal"};
-  lateralTuneKeys = {"AverageCurvature", "NNFF"};
+  fireTheBabysitterKeys = {"NoLogging", "MuteDM", "MuteDoor", "MuteOverheated", "MuteSeatbelt", "OfflineMode"};
+  laneChangeKeys = {"LaneChangeTime", "LaneDetection", "OneLaneChange"};
+  lateralTuneKeys = {"AverageCurvature", "NNFF", "SteerRatio"};
   longitudinalTuneKeys = {"AccelerationProfile", "AggressiveAcceleration", "SmoothBraking", "StoppingDistance"};
+  mtscKeys = {"MTSCAggressiveness"};
+  qolKeys = {"DisableOnroadUploads", "HigherBitrate", "PauseLateralOnSignal", "ReverseCruise", "SetSpeedOffset"};
   speedLimitControllerKeys = {"Offset1", "Offset2", "Offset3", "Offset4", "SLCFallback", "SLCOverride", "SLCPriority"};
   visionTurnControlKeys = {"CurveSensitivity", "TurnAggressiveness"};
 
+  QObject::connect(uiState(), &UIState::offroadTransition, this, [this](bool offroad) {
+    if (!offroad) {
+      updateCarToggles();
+    }
+  });
+
+  QObject::connect(device(), &Device::interactiveTimeout, this, &FrogPilotControlsPanel::hideSubToggles);
   QObject::connect(parent, &SettingsWindow::closeParentToggle, this, &FrogPilotControlsPanel::hideSubToggles);
   QObject::connect(parent, &SettingsWindow::updateMetric, this, &FrogPilotControlsPanel::updateMetric);
 
   hideSubToggles();
   updateMetric();
+}
+
+void FrogPilotControlsPanel::updateCarToggles() {
+  FrogPilotParamValueControl *steerRatioToggle = static_cast<FrogPilotParamValueControl*>(toggles["SteerRatio"]);
+  steerRatioStock = params.getInt("SteerRatioStock");
+  printf("steerRatioStock = %d\n", steerRatioStock);
+  if (steerRatioStock == 0) steerRatioStock = 15.0;
+  steerRatioToggle->setTitle(steerRatioStock != 0 ? QString("Steer Ratio (Default: " + QString::number(steerRatioStock / 10.0) + ")") : QString("Steer Ratio"));
+  steerRatioToggle->updateControl(steerRatioStock * 0.75, steerRatioStock * 1.25, "", 10);
+  steerRatioToggle->refresh();
 }
 
 void FrogPilotControlsPanel::updateToggles() {
@@ -408,6 +470,8 @@ void FrogPilotControlsPanel::updateMetric() {
     params.putInt("Offset2", std::nearbyint(params.getInt("Offset2") * speedConversion));
     params.putInt("Offset3", std::nearbyint(params.getInt("Offset3") * speedConversion));
     params.putInt("Offset4", std::nearbyint(params.getInt("Offset4") * speedConversion));
+    params.putInt("PauseLateralOnSignal", std::nearbyint(params.getInt("PauseLateralOnSignal") * speedConversion));
+    params.putInt("SetSpeedOffset", std::nearbyint(params.getInt("SetSpeedOffset") * speedConversion));
     params.putInt("StoppingDistance", std::nearbyint(params.getInt("StoppingDistance") * distanceConversion));
   }
 
@@ -415,6 +479,8 @@ void FrogPilotControlsPanel::updateMetric() {
   FrogPilotParamValueControl *offset2Toggle = static_cast<FrogPilotParamValueControl*>(toggles["Offset2"]);
   FrogPilotParamValueControl *offset3Toggle = static_cast<FrogPilotParamValueControl*>(toggles["Offset3"]);
   FrogPilotParamValueControl *offset4Toggle = static_cast<FrogPilotParamValueControl*>(toggles["Offset4"]);
+  FrogPilotParamValueControl *pauseLateralToggle = static_cast<FrogPilotParamValueControl*>(toggles["PauseLateralOnSignal"]);
+  FrogPilotParamValueControl *setSpeedOffsetToggle = static_cast<FrogPilotParamValueControl*>(toggles["SetSpeedOffset"]);
   FrogPilotParamValueControl *stoppingDistanceToggle = static_cast<FrogPilotParamValueControl*>(toggles["StoppingDistance"]);
 
   if (isMetric) {
@@ -428,10 +494,12 @@ void FrogPilotControlsPanel::updateMetric() {
     offset3Toggle->setDescription("Set speed limit offset for limits between 55-64 kph.");
     offset4Toggle->setDescription("Set speed limit offset for limits between 65-99 kph.");
 
-    offset1Toggle->updateControl(0, 99, " kph");
-    offset2Toggle->updateControl(0, 99, " kph");
-    offset3Toggle->updateControl(0, 99, " kph");
-    offset4Toggle->updateControl(0, 99, " kph");
+    offset1Toggle->updateControl(0, 150, " kph");
+    offset2Toggle->updateControl(0, 150, " kph");
+    offset3Toggle->updateControl(0, 150, " kph");
+    offset4Toggle->updateControl(0, 150, " kph");
+    pauseLateralToggle->updateControl(0, 150, " kph");
+    setSpeedOffsetToggle->updateControl(0, 150, " kph");
     stoppingDistanceToggle->updateControl(0, 5, " meters");
   } else {
     offset1Toggle->setTitle("Speed Limit Offset (0-34 mph)");
@@ -448,6 +516,8 @@ void FrogPilotControlsPanel::updateMetric() {
     offset2Toggle->updateControl(0, 99, " mph");
     offset3Toggle->updateControl(0, 99, " mph");
     offset4Toggle->updateControl(0, 99, " mph");
+    pauseLateralToggle->updateControl(0, 99, " mph");
+    setSpeedOffsetToggle->updateControl(0, 99, " mph");
     stoppingDistanceToggle->updateControl(0, 10, " feet");
   }
 
@@ -455,6 +525,8 @@ void FrogPilotControlsPanel::updateMetric() {
   offset2Toggle->refresh();
   offset3Toggle->refresh();
   offset4Toggle->refresh();
+  pauseLateralToggle->refresh();
+  setSpeedOffsetToggle->refresh();
   stoppingDistanceToggle->refresh();
 
   previousIsMetric = isMetric;
@@ -483,12 +555,14 @@ void FrogPilotControlsPanel::hideSubToggles() {
 
   for (auto &[key, toggle] : toggles) {
     bool subToggles = conditionalExperimentalKeys.find(key.c_str()) != conditionalExperimentalKeys.end() ||
-                            fireTheBabysitterKeys.find(key.c_str()) != fireTheBabysitterKeys.end() ||
-                            laneChangeKeys.find(key.c_str()) != laneChangeKeys.end() ||
-                            lateralTuneKeys.find(key.c_str()) != lateralTuneKeys.end() ||
-                            longitudinalTuneKeys.find(key.c_str()) != longitudinalTuneKeys.end() ||
-                            speedLimitControllerKeys.find(key.c_str()) != speedLimitControllerKeys.end() ||
-                            visionTurnControlKeys.find(key.c_str()) != visionTurnControlKeys.end();
+                      fireTheBabysitterKeys.find(key.c_str()) != fireTheBabysitterKeys.end() ||
+                      laneChangeKeys.find(key.c_str()) != laneChangeKeys.end() ||
+                      lateralTuneKeys.find(key.c_str()) != lateralTuneKeys.end() ||
+                      longitudinalTuneKeys.find(key.c_str()) != longitudinalTuneKeys.end() ||
+                      mtscKeys.find(key.c_str()) != mtscKeys.end() ||
+                      qolKeys.find(key.c_str()) != qolKeys.end() ||
+                      speedLimitControllerKeys.find(key.c_str()) != speedLimitControllerKeys.end() ||
+                      visionTurnControlKeys.find(key.c_str()) != visionTurnControlKeys.end();
     toggle->setVisible(!subToggles);
   }
 

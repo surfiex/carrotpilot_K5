@@ -17,7 +17,7 @@
 
 #define BACKLIGHT_DT 0.05
 #define BACKLIGHT_TS 10.00
-
+int _current_carrot_display = 1;
 // Projects a point in car to space to the corresponding point in full frame
 // image space.
 static bool calib_frame_to_full_frame(const UIState *s, float in_x, float in_y, float in_z, QPointF *out) {
@@ -603,6 +603,7 @@ static void update_state(UIState *s) {
       scene.speed_limit_overridden_speed = frogpilotLongitudinalPlan.getSlcOverriddenSpeed();
     }
     scene.adjusted_cruise = frogpilotLongitudinalPlan.getAdjustedCruise();
+    scene.vtsc_controlling_curve = frogpilotLongitudinalPlan.getVtscControllingCurve();
   }
   if (sm.updated("liveLocationKalman")) {
     auto liveLocationKalman = sm["liveLocationKalman"].getLiveLocationKalman();
@@ -644,37 +645,48 @@ void ui_update_params(UIState *s) {
   scene.conditional_speed_lead = params.getInt("CESpeedLead");
 
   scene.custom_onroad_ui = params.getBool("CustomUI");
-  scene.adjacent_path = scene.custom_onroad_ui && params.getBool("AdjacentPath");
-  scene.blind_spot_path = scene.custom_onroad_ui && params.getBool("BlindSpotPath");
-  scene.lead_info = scene.custom_onroad_ui && params.getBool("LeadInfo");
-  scene.road_name_ui = scene.custom_onroad_ui && params.getBool("RoadNameUI");
-  scene.show_fps = scene.custom_onroad_ui && params.getBool("ShowFPS");
-  scene.use_si = scene.custom_onroad_ui && params.getBool("UseSI");
+  scene.adjacent_path = params.getBool("AdjacentPath") && scene.custom_onroad_ui;
+  scene.blind_spot_path = params.getBool("BlindSpotPath") && scene.custom_onroad_ui;
+  scene.lead_info = params.getBool("LeadInfo") && scene.custom_onroad_ui;
+  scene.road_name_ui = params.getBool("RoadNameUI") && scene.custom_onroad_ui;
+  scene.show_fps = params.getBool("ShowFPS") && scene.custom_onroad_ui;
+  scene.use_si = params.getBool("UseSI") && scene.custom_onroad_ui;
+  scene.use_vienna_slc_sign = params.getBool("UseVienna") && scene.custom_onroad_ui;
 
   scene.custom_theme = params.getBool("CustomTheme");
   scene.custom_colors = scene.custom_theme ? params.getInt("CustomColors") : 0;
+  scene.custom_icons = scene.custom_theme ? params.getInt("CustomIcons") : 0;
   scene.custom_signals = scene.custom_theme ? params.getInt("CustomSignals") : 0;
 
   scene.model_ui = params.getBool("ModelUI");
-  scene.acceleration_path = scene.model_ui && params.getBool("AccelerationPath");
+  scene.acceleration_path = params.getBool("AccelerationPath") && scene.model_ui;
   scene.lane_line_width = params.getInt("LaneLinesWidth") * (scene.is_metric ? 1 : INCH_TO_CM) / 200;
   scene.path_edge_width = params.getInt("PathEdgeWidth");
   scene.path_width = params.getInt("PathWidth") / 10.0 * (scene.is_metric ? 1 : FOOT_TO_METER) / 2;
   scene.road_edge_width = params.getInt("RoadEdgesWidth") * (scene.is_metric ? 1 : INCH_TO_CM) / 200;
-  scene.unlimited_road_ui_length = scene.model_ui && params.getBool("UnlimitedLength");
+  scene.unlimited_road_ui_length = params.getBool("UnlimitedLength") && scene.model_ui;
 
   scene.driver_camera = params.getBool("DriverCamera");
-  scene.experimental_mode_via_press = params.getBool("ExperimentalModeViaPress");
-  scene.mute_dm = params.getBool("FireTheBabysitter") && params.getBool("MuteDM");
+  scene.experimental_mode_via_screen = params.getBool("ExperimentalModeViaScreen") && params.getBool("ExperimentalModeActivation");
+  scene.mute_dm = params.getBool("MuteDM") && params.getBool("FireTheBabysitter");
   scene.personalities_via_screen = (params.getInt("AdjustablePersonalities") == 2 || params.getInt("AdjustablePersonalities") == 3);
 
+  scene.quality_of_life_controls = params.getBool("QOLControls");
+  scene.reverse_cruise = params.getBool("ReverseCruise") && scene.quality_of_life_controls;
+
+  scene.quality_of_life_visuals = params.getBool("QOLVisuals");
+  scene.full_map = params.getBool("FullMap") && scene.quality_of_life_visuals;
+  scene.hide_speed = params.getBool("HideSpeed") && scene.quality_of_life_visuals;
+  scene.show_slc_offset = params.getBool("ShowSLCOffset") && scene.quality_of_life_visuals;
+
+  scene.random_events = params.getBool("RandomEvents");
   scene.rotating_wheel = params.getBool("RotatingWheel");
   scene.screen_brightness = params.getInt("ScreenBrightness");
   scene.speed_limit_controller = params.getBool("SpeedLimitController");
   scene.wheel_icon = params.getInt("WheelIcon");
 
 
-  
+
   static int updateSeq = 0;
   if (updateSeq++ > 100) updateSeq = 0;
   switch(updateSeq) {
@@ -775,8 +787,7 @@ UIState::UIState(QObject *parent) : QObject(parent) {
 
   wifi = new WifiManager(this);
 
-  scene.screen_brightness = params.getInt("ScreenBrightness");
-
+  ui_update_params(this);
   setDefaultParams();
 }
 
@@ -793,13 +804,16 @@ void UIState::update() {
   // Update FrogPilot variables when they are changed
   Params paramsMemory{"/dev/shm/params"};
   if (paramsMemory.getBool("FrogPilotTogglesUpdated")) {
-    ui_update_params(this);
-    emit uiUpdateFrogPilotParams();
+    std::thread updateFrogPilotParams(ui_update_params, this);
+    updateFrogPilotParams.detach();
   }
 
   // FrogPilot live variables that need to be constantly checked
   if (scene.conditional_experimental) {
     scene.conditional_status = paramsMemory.getInt("CEStatus");
+  }
+  if (scene.random_events) {
+    scene.current_random_event = paramsMemory.getInt("CurrentRandomEvent");
   }
 }
 

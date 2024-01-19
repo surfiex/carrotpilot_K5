@@ -68,6 +68,7 @@ protected:
 	void	drawAccel(const UIState* s, int x, int y);
 	void	drawRpm(const UIState* s, int x, int y);
 	void	drawGapInfo(const UIState* s, int x, int y);
+	void	drawGapInfo2(const UIState* s, int x, int y);
 	void	drawConnInfo(const UIState* s);
 	void	drawSpeed(const UIState* s, int x, int y);
 	void	drawTurnInfo(const UIState* s, int x, int y);

@@ -451,9 +451,10 @@ struct CarControl {
       promptRepeat @7;
       promptDistracted @8;
 
+      firefox @9;
+
       longEngaged @10;
       longDisengaged @11;
-
       trafficSignGreen @12;
       trafficSignChanged @13;
       laneChange @14;
@@ -465,7 +466,7 @@ struct CarControl {
       bsdWarning @20;
       speedDown @21;
       stopStop @22;
-      audioTurn @9;
+      audioTurn @23;
       
     }
   }

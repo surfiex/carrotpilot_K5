@@ -60,6 +60,7 @@ class CarController:
     self.last_button_frame = 0
     
     self.jerkStartLimit = 2.0
+    self.maxAngleFrames = MAX_ANGLE_FRAMES
     self.softHoldMode = 1
     self.blinking_signal = False #������ ����̿� 1Hz
     self.blinking_frame = int(1.0 / DT_CTRL)
@@ -82,7 +83,7 @@ class CarController:
 
     # >90 degree steering fault prevention
     self.angle_limit_counter, apply_steer_req = common_fault_avoidance(abs(CS.out.steeringAngleDeg) >= MAX_ANGLE, CC.latActive,
-                                                                       self.angle_limit_counter, MAX_ANGLE_FRAMES,
+                                                                       self.angle_limit_counter, self.maxAngleFrames,
                                                                        MAX_ANGLE_CONSECUTIVE_FRAMES)
 
     if not CC.latActive:
@@ -112,6 +113,8 @@ class CarController:
     can_sends = []
 
     # *** common hyundai stuff ***
+    if self.frame % 100 == 0:
+      self.maxAngleFrames = int(Params().get("MaxAngleFrames", encoding="utf8"))
 
     # tester present - w/ no response (keeps relevant ECU disabled)
     if self.frame % 100 == 0 and not (self.CP.flags & HyundaiFlags.CANFD_CAMERA_SCC.value) and self.CP.openpilotLongitudinalControl:
@@ -167,6 +170,8 @@ class CarController:
       else:
         if not CC.enabled:
           self.activateCruise = 0
+
+        ### for LongControl auto activate...
         if CC.cruiseControl.activate and self.activateCruise == 0: ## ajouatom: send command to panda via Button spam(GAP_DIST), for auto engage
           self.activateCruise = 1
           can_sends.append(hyundaican.create_clu11(self.packer, self.frame, CS.clu11, Buttons.RES_ACCEL, self.CP.carFingerprint))
@@ -189,7 +194,7 @@ class CarController:
           self.jerk_count = 0
         elif actuators.longControlState == LongCtrlState.stopping or hud_control.softHold > 0:
           jerk_u = 0.5
-          jerk_l = jerkLimit
+          jerk_l = 1.0 #jerkLimit
           self.jerk_count = 0
         else:
           jerk_u = min(max(0.5, jerk * 2.0), jerk_max)
@@ -235,7 +240,10 @@ class CarController:
 
   def create_button_messages(self, CC: car.CarControl, CS: car.CarState, use_clu11: bool):
     can_sends = []
+    hud_control = CC.hudControl
     if use_clu11:
+      if CS.out.brakePressed:
+        return can_sends
       #if CC.cruiseControl.cancel:
       #  can_sends.append(hyundaican.create_clu11(self.packer, self.frame, CS.clu11, Buttons.CANCEL, self.CP.carFingerprint))
       #elif CC.cruiseControl.resume:
@@ -272,25 +280,36 @@ class CarController:
         target = int(set_speed_in_units+0.5)
         current = int(CS.out.cruiseState.speed*CV.MS_TO_KPH + 0.5)
 
-        #CC.debugTextCC = "BTN:00,T:{:.1f},C:{:.1f},{},{}".format(target, current, self.wait_timer, self.alive_timer)
         if (self.frame - self.last_button_frame) > self.button_wait:
           if (self.frame - self.button_alive_frame) > self.button_alive:
             self.button_wait = randint(8,15)
             self.last_button_frame = self.frame
-          elif CC.enabled and CS.cruise_buttons[-1] == Buttons.NONE:
-            if not CS.out.cruiseState.enabled:
-              if CC.longActive and (hud_control.leadVisible or current > 10.0):
+          if CS.cruise_buttons[-1] == Buttons.NONE:
+            if not CC.enabled:
+              self.activateCruise = 0
+            if CC.enabled:
+              if not CS.out.cruiseState.enabled:
+                #if CC.longActive and (hud_control.leadVisible or current > 10.0):
+                if (hud_control.leadVisible or current > 10.0):
+                  can_sends.append(hyundaican.create_clu11_button(self.packer, self.frame, CS.clu11, Buttons.RES_ACCEL, self.CP.carFingerprint))
+                  #CC.debugTextCC = "BTN:++,T:{:.1f},C:{:.1f}".format(target, current)
+              #elif CS.out.cruiseGap != hud_control.cruiseGap:
+              #  can_sends.append(hyundaican.create_clu11_button(self.packer, self.frame, CS.clu11, Buttons.GAP_DIST, self.CP.carFingerprint))
+              #  CC.debugTextCC = "currentGap = {}, target = {}".format(CS.out.cruiseGap, hud_control.cruiseGap)
+              elif target < current and current>= 31:
+                can_sends.append(hyundaican.create_clu11_button(self.packer, self.frame, CS.clu11, Buttons.SET_DECEL, self.CP.carFingerprint))
+                #CC.debugTextCC = "BTN:--,T:{:.1f},C:{:.1f}".format(target, current)
+              elif target > current and current < 160:
                 can_sends.append(hyundaican.create_clu11_button(self.packer, self.frame, CS.clu11, Buttons.RES_ACCEL, self.CP.carFingerprint))
                 #CC.debugTextCC = "BTN:++,T:{:.1f},C:{:.1f}".format(target, current)
-            #elif CS.out.cruiseGap != hud_control.cruiseGap:
-            #  can_sends.append(hyundaican.create_clu11_button(self.packer, self.frame, CS.clu11, Buttons.GAP_DIST, self.CP.carFingerprint))
-            #  CC.debugTextCC = "currentGap = {}, target = {}".format(CS.out.cruiseGap, hud_control.cruiseGap)
-            elif target < current and current>= 31:
-              can_sends.append(hyundaican.create_clu11_button(self.packer, self.frame, CS.clu11, Buttons.SET_DECEL, self.CP.carFingerprint))
-              #CC.debugTextCC = "BTN:--,T:{:.1f},C:{:.1f}".format(target, current)
-            elif target > current and current < 160:
-              can_sends.append(hyundaican.create_clu11_button(self.packer, self.frame, CS.clu11, Buttons.RES_ACCEL, self.CP.carFingerprint))
-              #CC.debugTextCC = "BTN:++,T:{:.1f},C:{:.1f}".format(target, current)
+            elif CC.cruiseControl.activate and self.activateCruise == 0:
+              #print("sendActivateCruise Buttons....")
+              if (hud_control.leadVisible or current > 10.0):
+                print("sendActivateCruise Buttons....Sent....")
+                can_sends.append(hyundaican.create_clu11_button(self.packer, self.frame, CS.clu11, Buttons.RES_ACCEL, self.CP.carFingerprint))
+                self.activateCruise = 1
+                self.button_wait = 100
+
         else:
           self.button_alive = randint(4, 8) #randint(12, 18)
           self.button_alive_frame = self.frame
